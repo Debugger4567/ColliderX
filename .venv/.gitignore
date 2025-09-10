@@ -1,0 +1,73 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ---- Virtual Environments ----
+.venv/
+venv/
+env/
+ENV/
+.venv*/
+venv*/
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ---- Jupyter / Notebooks ----
+.ipynb_checkpoints
+*.ipynb
+
+# ---- OS Files ----
+.DS_Store
+Thumbs.db
+
+# ---- Logs / Debug ----
+*.log
+*.pot
+*.pyc
+*.pyo
+
+# ---- Coverage / Testing ----
+htmlcov/
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+.cache
+.pytest_cache/
+nosetests.xml
+test-results.xml
+
+# ---- Flask / Django ----
+instance/
+*.db
+*.sqlite3
+db.sqlite3
+migrations/
+
+# ---- Data / Outputs ----
+*.csv
+*.tsv
+*.json
+*.pkl
+*.h5
+*.sqlite
+*.db
+*.dat
+*.npz
+
+# ---- Plots / Images ----
+plots/*.png
+plots/*.jpg
+plots/*.pdf
