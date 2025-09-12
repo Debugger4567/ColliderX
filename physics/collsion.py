@@ -7,37 +7,53 @@ class MonteCarloCollider:
 
     def get_particle(self, name_or_symbol):
         cur = self.conn.cursor()
-        cur.execute("SELECT name, symbol, mass, charge, spin, pdg_id FROM particles WHERE name = ? OR symbol = ?", 
-                    (name_or_symbol, name_or_symbol))
+        cur.execute("""
+            SELECT Name, Symbol, `Mass (MeV/c^2)`, `Charge (e)`, Spin, `PDG ID`
+            FROM particles
+            WHERE Name = ? OR Symbol = ?
+        """, (name_or_symbol, name_or_symbol))
         return cur.fetchone()
 
     def get_decays(self, pdg_id):
         cur = self.conn.cursor()
-        cur.execute("SELECT products, branching_ratio FROM decays WHERE parent_pdg_id = ?", (pdg_id,))
+        cur.execute("""
+            SELECT decay_mode, branching_fraction
+            FROM decays
+            WHERE pdg_id = ?
+        """, (pdg_id,))
         return cur.fetchall()
 
     def is_stable(self, pdg_id):
         return len(self.get_decays(pdg_id)) == 0
 
-    def simulate_decay(self, particle):
-        """Simulate decay of a single particle (randomly by branching ratio)."""
+    def simulate_decay(self, particle, depth=0):
+        """Simulate decay recursively and print decay tree."""
         name, sym, mass, charge, spin, pdg_id = particle
         decays = self.get_decays(pdg_id)
 
+        indent = "  " * depth
+
         if not decays:  # stable
+            print(f"{indent}↳ {name} ({sym}) [stable]")
             return [particle]
 
         # Weighted random decay
         products_str, _ = random.choices(decays, weights=[d[1] for d in decays], k=1)[0]
+        product_names = products_str.split()
+
+        print(f"{indent}↳ {name} ({sym}) decays into {', '.join(product_names)}")
 
         products = []
-        for prod in products_str.split():
+        for pname in product_names:
             cur = self.conn.cursor()
-            cur.execute("SELECT name, symbol, mass, charge, spin, pdg_id FROM particles WHERE name=? OR symbol=?", (prod, prod))
+            cur.execute("""
+                SELECT Name, Symbol, `Mass (MeV/c^2)`, `Charge (e)`, Spin, `PDG ID`
+                FROM particles
+                WHERE Name = ? OR Symbol = ?
+            """, (pname, pname))
             res = cur.fetchone()
             if res:
-                products.append(res)
-
+                products.extend(self.simulate_decay(res, depth+1))
         return products
 
     def collide(self, particle1, particle2, energy):
@@ -60,9 +76,13 @@ class MonteCarloCollider:
         event_particles = [p1, p2]
 
         # If energy is high enough, maybe create a random heavy particle
-        if energy > 2000:  # arbitrary cutoff
+        if energy > 1.2e5:  # ~120 GeV, enough for Higgs
             cur = self.conn.cursor()
-            cur.execute("SELECT name, symbol, mass, charge, spin, pdg_id FROM particles WHERE mass <= ?", (energy,))
+            cur.execute("""
+                SELECT Name, Symbol, `Mass (MeV/c^2)`, `Charge (e)`, Spin, `PDG ID`
+                FROM particles
+                WHERE `Mass (MeV/c^2)` <= ?
+            """, (energy,))
             candidates = cur.fetchall()
             if candidates:
                 newp = random.choice(candidates)
@@ -71,19 +91,11 @@ class MonteCarloCollider:
 
         # Run decay chains
         stable_particles = []
-        queue = event_particles
-
-        while queue:
-            current = queue.pop()
-            if self.is_stable(current[5]):
-                stable_particles.append(current)
-            else:
-                products = self.simulate_decay(current)
-                print(f"⚡ {current[0]} decayed into: {', '.join([p[0] for p in products])}")
-                queue.extend(products)
+        for particle in event_particles:
+            stable_particles.extend(self.simulate_decay(particle, depth=1))
 
         # Final detector output
-        print("\n=== Final Stable Particles ===")
+        print("\n=== Final Stable Particles (Detector Output) ===")
         for sp in stable_particles:
             print(f"- {sp[0]} ({sp[1]})")
 

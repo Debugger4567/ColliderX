@@ -7,9 +7,8 @@ from physics.decays import Decays
 if __name__ == "__main__":
     sim = MonteCarloCollider()
 
-    # Example: proton-proton collision at 50 GeV
-    sim.collide("p", "p", energy=50000)
-
+    # Simulate proton-proton collision at 8 TeV (LHC scale)
+    sim.collide("p", "p", energy=8000000)
 '''  
 
 def main():
