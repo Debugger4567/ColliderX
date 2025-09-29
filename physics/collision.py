@@ -100,3 +100,63 @@ class MonteCarloCollider:
             print(f"- {sp[0]} ({sp[1]})")
 
         return stable_particles
+    
+
+
+'''
+import numpy as np
+
+class MonteCarloCollider:
+    def __init__(self, default_energy=8_000_000):
+        """
+        Monte Carlo Proton-Proton Collider
+        :param default_energy: Default center-of-mass collision energy (MeV).
+        """
+        self.default_energy = default_energy
+
+        # Very rough/fictional probabilities for demo
+        self.particle_probs = {
+            "higgs": 1e-7,      # Higgs boson is extremely rare
+            "z_boson": 1e-5,
+            "w_boson": 1e-5,
+            "top_quark": 1e-6,
+            "muon": 1e-3,
+            "pion": 1e-2,
+            "proton": 0.1,
+            "neutron": 0.1,
+            "photon": 0.2,
+            "gluon": 0.2,
+        }
+
+        # Normalize probabilities to sum = 1
+        total = sum(self.particle_probs.values())
+        for k in self.particle_probs:
+            self.particle_probs[k] /= total
+
+        self.particles = np.array(list(self.particle_probs.keys()))
+        self.probabilities = np.array(list(self.particle_probs.values()))
+
+    def collide(self, p1="p", p2="p", energy=None, n=1, verbose=True):
+        """
+        Simulate n proton-proton collisions using vectorized NumPy sampling.
+        :param p1: first particle (unused, kept for API consistency)
+        :param p2: second particle (unused, kept for API consistency)
+        :param energy: collision energy in MeV
+        :param n: number of collisions
+        :param verbose: if True, prints results
+        :return: list of produced particles (NumPy array)
+        """
+        if energy is None:
+            energy = self.default_energy
+
+        # Draw all collisions at once
+        results = np.random.choice(self.particles, size=n, p=self.probabilities)
+
+        if verbose:
+            unique, counts = np.unique(results, return_counts=True)
+            summary = dict(zip(unique, counts))
+            print(f"Simulated {n:,} collisions at {energy:,} MeV")
+            print("Event summary:", summary)
+
+        return results
+'''
