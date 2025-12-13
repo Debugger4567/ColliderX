@@ -9,6 +9,7 @@ import math
 from dataclasses import dataclass
 from typing import Tuple, List, Optional
 import numpy as np
+import warnings
 
 # -----------------------------
 # FourVector
@@ -90,6 +91,7 @@ def isotropic_direction(rng: Optional[np.random.Generator] = None) -> np.ndarray
 def generate_two_body_decay(parent_mass: float,
                             daughter_masses: Tuple[float, float],
                             rng: Optional[np.random.Generator] = None) -> List[FourVector]:
+    warnings.warn("generate_two_body_decay is deprecated. Use phase_space.generate_n_body_decay instead.", DeprecationWarning, stacklevel=2)
     rng = rng or np.random.default_rng()
     m0 = float(parent_mass)
     m1, m2 = map(float, daughter_masses)
@@ -123,6 +125,7 @@ def generate_two_body_decay(parent_mass: float,
 def generate_three_body_decay(parent_mass: float,
                               daughter_masses: Tuple[float, float, float],
                               rng: Optional[np.random.Generator] = None) -> List[FourVector]:
+    warnings.warn("generate_three_body_decay is deprecated. Use phase_space.generate_n_body_decay instead.", DeprecationWarning, stacklevel=2)
     rng = rng or np.random.default_rng()
     m0 = float(parent_mass)
     m1, m2, m3 = map(float, daughter_masses)

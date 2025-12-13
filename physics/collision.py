@@ -1,6 +1,7 @@
 from .particles import Particle
 from .decay_selector import choose_decay_mode, choose_decay_daughters
-from .kinematics import FourVector, generate_two_body_decay, generate_three_body_decay
+from .phase_space import generate_n_body_decay, validate_four_momentum_conservation
+from .kinematics import FourVector
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -76,19 +77,13 @@ def _is_kinematically_allowed(parent_mass: float, daughter_names: list[str]) -> 
         return True  # Assume allowed if lookup fails
 
 
-def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str]) -> list[FourVector]:
-    """Generate daughter 4-vectors in parent rest frame for 2- or 3-body decays."""
-    try:
-        dm = [Particle(name).mass for name in daughter_names]
-    except Exception as e:
-        raise ValueError(f"Cannot resolve masses for {daughter_names}: {e}")
-    
-    if len(dm) == 2:
-        return generate_two_body_decay(parent_mass, (dm[0], dm[1]))
-    if len(dm) == 3:
-        return generate_three_body_decay(parent_mass, (dm[0], dm[1], dm[2]))
-    raise NotImplementedError(f"Only 2- and 3-body decays are supported (got {len(dm)} daughters)")
-
+def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], rng):
+    daughters = [Particle(name) for name in daughter_names]
+    masses = [d.mass for d in daughters]  # MeV
+    parent_p4 = FourVector(parent_mass, 0.0, 0.0, 0.0)
+    final_p4s, weight = generate_n_body_decay(parent_p4, masses, rng=rng, matrix_element=None)
+    validate_four_momentum_conservation(parent_p4, final_p4s, tolerance=1e-3)
+    return final_p4s, weight
 
 def simulate_event(parent_name: str, event_weight: float = 1.0, rng: random.Random | None = None):
     """
@@ -142,12 +137,13 @@ def simulate_event(parent_name: str, event_weight: float = 1.0, rng: random.Rand
 
     # --- Kinematics ---
     try:
-        fvs = _generate_decay_fourvectors(parent.mass, daughters)
+        p4s, ps_weight = _generate_decay_fourvectors(parent.mass, daughters, rng)
     except Exception as e:
         print(f"[ERROR] Kinematics failed: {e}")
         return None
     
-    decay_products = list(zip(daughters, fvs))
+    decay_products = list(zip(daughters, p4s))
+    total_weight = ps_weight * event_weight
 
     # --- Store in DB ---
     conn = sqlite3.connect(DB_PATH)
@@ -155,10 +151,10 @@ def simulate_event(parent_name: str, event_weight: float = 1.0, rng: random.Rand
 
     try:
         # Insert event info
-        c.execute('''
-            INSERT INTO events(parent, decay_mode, energy, timestamp, event_weight)
-            VALUES(?, ?, ?, ?, ?)
-        ''', (parent.name, decay_mode, parent.mass, datetime.now().isoformat(), event_weight))
+        c.execute(
+            "INSERT INTO events (parent, decay_mode, energy, event_weight) VALUES (?, ?, ?, ?)",
+            (parent_name, decay_mode, parent.mass, total_weight)
+        )
         event_id = c.lastrowid
 
         # Insert each daughter as final state
