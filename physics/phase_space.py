@@ -126,7 +126,7 @@ def generate_n_body_decay(
 
     return final_lab, weight
 
-
+'''
 def validate_four_momentum_conservation(
     parent_p4: FourVector,
     final_p4s: List[FourVector],
@@ -144,3 +144,5 @@ def validate_four_momentum_conservation(
         print(f"   Δp = {dp:.6f} MeV (tolerance: {tolerance})")
         return False
     return True
+
+'''
