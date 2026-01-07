@@ -1,14 +1,11 @@
-import sqlite3
 import json
 import math
-from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
 import numpy as np
 from .kinematics import FourVector
-
-DB_PATH = Path(__file__).resolve().parents[1] / "colliderx.db"
+from db import get_conn
 
 
 class EventDB:
@@ -18,14 +15,13 @@ class EventDB:
     and automatically validates conservation laws.
     """
 
-    def __init__(self, db_path: Path = DB_PATH):
-        self.db_path = db_path
+    def __init__(self):
         self.create_table()
 
     @contextmanager
     def get_connection(self):
         """Context manager for safe DB access."""
-        conn = sqlite3.connect(self.db_path)
+        conn = get_conn()
         try:
             yield conn
             conn.commit()
@@ -35,24 +31,27 @@ class EventDB:
     def create_table(self):
         """Create the 'events' table with conservation tracking."""
         with self.get_connection() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS events (
-                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT,
-                    process_tag TEXT,
-                    parent_name TEXT,
-                    parent_mass REAL,
-                    daughter_names TEXT,
-                    E_values TEXT,
-                    px_values TEXT,
-                    py_values TEXT,
-                    pz_values TEXT,
-                    energy_conserved INTEGER,
-                    momentum_conserved INTEGER,
-                    invariant_mass REAL,
-                    timestamp TEXT
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS events (
+                        event_id SERIAL PRIMARY KEY,
+                        event_type TEXT,
+                        process_tag TEXT,
+                        parent_name TEXT,
+                        parent_mass DOUBLE PRECISION,
+                        daughter_names TEXT,
+                        E_values TEXT,
+                        px_values TEXT,
+                        py_values TEXT,
+                        pz_values TEXT,
+                        energy_conserved INTEGER,
+                        momentum_conserved INTEGER,
+                        invariant_mass DOUBLE PRECISION,
+                        timestamp TEXT
+                    )
+                    """
                 )
-            """)
 
     def store_event(
         self,
@@ -103,18 +102,22 @@ class EventDB:
         invariant_mass = math.sqrt(max(total_E**2 - p_squared, 0.0))
         
         with self.get_connection() as conn:
-            conn.execute("""
-                INSERT INTO events (
-                    event_type, process_tag, parent_name, parent_mass,
-                    daughter_names, E_values, px_values, py_values, pz_values,
-                    energy_conserved, momentum_conserved, invariant_mass, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                event_type, process_tag, parent_name, parent_mass,
-                daughter_names, E_vals, px_vals, py_vals, pz_vals,
-                int(energy_conserved), int(momentum_conserved),
-                invariant_mass, datetime.now().isoformat(timespec="seconds")
-            ))
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO events (
+                        event_type, process_tag, parent_name, parent_mass,
+                        daughter_names, E_values, px_values, py_values, pz_values,
+                        energy_conserved, momentum_conserved, invariant_mass, timestamp
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        event_type, process_tag, parent_name, parent_mass,
+                        daughter_names, E_vals, px_vals, py_vals, pz_vals,
+                        int(energy_conserved), int(momentum_conserved),
+                        invariant_mass, datetime.now().isoformat(timespec="seconds"),
+                    ),
+                )
 
     def parse_event(self, event_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -122,20 +125,22 @@ class EventDB:
         Returns None if event_id not found.
         """
         with self.get_connection() as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM events WHERE event_id = ?", (event_id,))
-            row = cur.fetchone()
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM events WHERE event_id = %s", (event_id,))
+                row = cur.fetchone()
+                columns = [desc[0] for desc in cur.description] if cur.description else []
         
         if not row:
             return None
+
+        row_dict = dict(zip(columns, row))
         
         # Deserialize arrays
-        E_vals = json.loads(row["E_values"])
-        px_vals = json.loads(row["px_values"])
-        py_vals = json.loads(row["py_values"])
-        pz_vals = json.loads(row["pz_values"])
-        daughter_names = json.loads(row["daughter_names"])
+        E_vals = json.loads(row_dict["E_values"])
+        px_vals = json.loads(row_dict["px_values"])
+        py_vals = json.loads(row_dict["py_values"])
+        pz_vals = json.loads(row_dict["pz_values"])
+        daughter_names = json.loads(row_dict["daughter_names"])
         
         # Rebuild FourVectors
         daughters = [
@@ -144,16 +149,16 @@ class EventDB:
         ]
         
         return {
-            "event_id": row["event_id"],
-            "event_type": row["event_type"],
-            "process_tag": row["process_tag"],
-            "parent_name": row["parent_name"],
-            "parent_mass": row["parent_mass"],
+            "event_id": row_dict["event_id"],
+            "event_type": row_dict["event_type"],
+            "process_tag": row_dict["process_tag"],
+            "parent_name": row_dict["parent_name"],
+            "parent_mass": row_dict["parent_mass"],
             "daughters": daughters,
-            "energy_conserved": bool(row["energy_conserved"]),
-            "momentum_conserved": bool(row["momentum_conserved"]),
-            "invariant_mass": row["invariant_mass"],
-            "timestamp": row["timestamp"]
+            "energy_conserved": bool(row_dict["energy_conserved"]),
+            "momentum_conserved": bool(row_dict["momentum_conserved"]),
+            "invariant_mass": row_dict["invariant_mass"],
+            "timestamp": row_dict["timestamp"],
         }
 
     def list_events(
@@ -171,44 +176,42 @@ class EventDB:
             conserved_only: Only return events with perfect conservation
         """
         with self.get_connection() as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            
-            query = "SELECT * FROM events WHERE 1=1"
-            params = []
-            
-            if event_type:
-                query += " AND event_type = ?"
-                params.append(event_type)
-            
-            if conserved_only:
-                query += " AND energy_conserved = 1 AND momentum_conserved = 1"
-            
-            query += " ORDER BY event_id DESC LIMIT ?"
-            params.append(limit)
-            
-            cur.execute(query, params)
-            return [dict(row) for row in cur.fetchall()]
+            with conn.cursor() as cur:
+                query = "SELECT * FROM events WHERE 1=1"
+                params = []
+
+                if event_type:
+                    query += " AND event_type = %s"
+                    params.append(event_type)
+
+                if conserved_only:
+                    query += " AND energy_conserved = 1 AND momentum_conserved = 1"
+
+                query += " ORDER BY event_id DESC LIMIT %s"
+                params.append(limit)
+
+                cur.execute(query, params)
+                columns = [desc[0] for desc in cur.description] if cur.description else []
+                return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     def stats(self) -> Dict[str, Any]:
         """Get summary statistics."""
         with self.get_connection() as conn:
-            cur = conn.cursor()
-            
-            cur.execute("SELECT COUNT(*) FROM events")
-            total = cur.fetchone()[0]
-            
-            cur.execute("SELECT COUNT(*) FROM events WHERE energy_conserved = 1")
-            e_conserved = cur.fetchone()[0]
-            
-            cur.execute("SELECT COUNT(*) FROM events WHERE momentum_conserved = 1")
-            p_conserved = cur.fetchone()[0]
-            
-            cur.execute("SELECT COUNT(*) FROM events WHERE energy_conserved = 1 AND momentum_conserved = 1")
-            both_conserved = cur.fetchone()[0]
-            
-            cur.execute("SELECT AVG(invariant_mass) FROM events WHERE invariant_mass IS NOT NULL")
-            avg_mass = cur.fetchone()[0] or 0.0
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM events")
+                total = cur.fetchone()[0]
+
+                cur.execute("SELECT COUNT(*) FROM events WHERE energy_conserved = 1")
+                e_conserved = cur.fetchone()[0]
+
+                cur.execute("SELECT COUNT(*) FROM events WHERE momentum_conserved = 1")
+                p_conserved = cur.fetchone()[0]
+
+                cur.execute("SELECT COUNT(*) FROM events WHERE energy_conserved = 1 AND momentum_conserved = 1")
+                both_conserved = cur.fetchone()[0]
+
+                cur.execute("SELECT AVG(invariant_mass) FROM events WHERE invariant_mass IS NOT NULL")
+                avg_mass = cur.fetchone()[0] or 0.0
             
         return {
             "total_events": total,
@@ -226,4 +229,5 @@ class EventDB:
     def clear_events(self):
         """Delete all events (use with caution!)."""
         with self.get_connection() as conn:
-            conn.execute("DELETE FROM events")
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM events")

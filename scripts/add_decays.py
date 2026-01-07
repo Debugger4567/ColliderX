@@ -1,7 +1,7 @@
-import sqlite3
+from db import get_conn
 
-def add_decays(db_path="colliderx.db"):
-    conn = sqlite3.connect(db_path)
+def add_decays():
+    conn = get_conn()
     cur = conn.cursor()
 
     # Dictionary: PDG ID → [(decay_mode, branching_fraction), ...]
@@ -47,10 +47,14 @@ def add_decays(db_path="colliderx.db"):
 
     for pdg_id, modes in decays.items():
         for mode, br in modes:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO decays (pdg_id, decay_mode, branching_fraction)
-                VALUES (?, ?, ?)
-            """, (pdg_id, mode, br))
+                VALUES (%s, %s, %s)
+                ON CONFLICT (pdg_id, decay_mode) DO NOTHING
+                """,
+                (pdg_id, mode, br),
+            )
 
     conn.commit()
     conn.close()

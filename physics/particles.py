@@ -1,9 +1,5 @@
-import sqlite3
-from pathlib import Path
+from db import get_conn
 from .kinematics import FourVector
-
-# Path to the colliderx.db file
-DB_PATH = Path(__file__).resolve().parents[1] / "colliderx.db"
 
 
 class Particle:
@@ -45,23 +41,25 @@ class Particle:
         if key in cls._cache:
             return cls._cache[key]
 
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-
-        # Search by Name or Symbol, case-insensitive
-        cur.execute("""
-            SELECT * FROM particles
-            WHERE LOWER("Name") = LOWER(?) OR LOWER("Symbol") = LOWER(?)
-        """, (name_or_symbol, name_or_symbol))
-
-        row = cur.fetchone()
-        conn.close()
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT "Name", "Symbol", "Mass (MeV/c^2)", "Charge (e)", "Spin",
+                       "Baryon Number", "Le", "Lmu", "Ltau", "Strangeness",
+                       "Charm", "Bottomness", "Topness"
+                FROM particles
+                WHERE LOWER("Name") = LOWER(%s) OR LOWER("Symbol") = LOWER(%s)
+                LIMIT 1
+                """,
+                (name_or_symbol, name_or_symbol),
+            )
+            row = cur.fetchone()
+            columns = [desc[0] for desc in cur.description] if cur.description else []
 
         if not row:
-            raise ValueError(f"❌ Particle '{name_or_symbol}' not found in database at {DB_PATH}")
+            raise ValueError(f"❌ Particle '{name_or_symbol}' not found in database")
 
-        data = dict(row)
+        data = dict(zip(columns, row))
         cls._cache[key] = data  # Store in cache
         return data
 

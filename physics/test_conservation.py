@@ -23,7 +23,7 @@ from .conservation import (
     two_body_decay,
 )
 from pathlib import Path
-import sqlite3
+from db import get_conn
 
 
 # ----------------------------- Utility ------------------------------------
@@ -202,15 +202,10 @@ def test_two_body_decay_massless_daughter():
 # ================= Particle + FourVector (DB-backed) Decays ==============
 def _load_particles_from_db():
     """Helper returning list of (Name, Symbol, Mass) or empty list if unavailable."""
-    db_path = Path(__file__).resolve().parents[1] / "colliderx.db"
-    if not db_path.exists():
-        return []
     try:
-        conn = sqlite3.connect(db_path)
-        cur = conn.cursor()
-        cur.execute('SELECT Name, Symbol, "Mass (MeV/c^2)" FROM particles')
-        rows = cur.fetchall()
-        conn.close()
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute('SELECT "Name", "Symbol", "Mass (MeV/c^2)" FROM particles')
+            rows = cur.fetchall()
         cleaned = []
         for n, s, m in rows:
             try:

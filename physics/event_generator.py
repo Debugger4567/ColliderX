@@ -1,16 +1,13 @@
 import json
-import sqlite3
 import random
 import logging
-from pathlib import Path
 from typing import List, Dict, Optional
+from db import get_conn
 from .particles import Particle
 from .kinematics import generate_two_body_decay, generate_three_body_decay, FourVector
 from .events import EventDB
 
 logger = logging.getLogger(__name__)
-DB_PATH = Path(__file__).resolve().parents[1] / "colliderx.db"
-
 
 def load_decay_channels(parent_name: str) -> List[Dict]:
     """
@@ -19,31 +16,29 @@ def load_decay_channels(parent_name: str) -> List[Dict]:
     Returns:
         List of dicts with 'daughters' and 'branching_fraction'
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    
-    cur.execute("""
-        SELECT daughter1, daughter2, branching_fraction 
-        FROM decays 
-        WHERE parent = ?
-    """, (parent_name,))
-    
-    rows = cur.fetchall()
-    conn.close()
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT daughter1, daughter2, branching_fraction
+            FROM decays
+            WHERE parent = %s
+            """,
+            (parent_name,),
+        )
+        rows = cur.fetchall()
     
     if not rows:
         raise ValueError(f"No decay channels found for '{parent_name}'")
     
     channels = []
     for row in rows:
-        daughters = [row["daughter1"]]
-        if row["daughter2"]:  # Two-body decay
-            daughters.append(row["daughter2"])
+        daughters = [row[0]]
+        if row[1]:  # Two-body decay
+            daughters.append(row[1])
         
         channels.append({
             "daughters": daughters,
-            "branching_fraction": row["branching_fraction"]
+            "branching_fraction": row[2]
         })
     
     return channels
@@ -209,9 +204,7 @@ def simulate_batch(parent_name: str, n: int = 10,
 
 def get_available_parents() -> List[str]:
     """Return list of particles with defined decay channels."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT DISTINCT parent FROM decays")
-    parents = [row[0] for row in cur.fetchall()]
-    conn.close()
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT parent FROM decays")
+        parents = [row[0] for row in cur.fetchall()]
     return sorted(parents)

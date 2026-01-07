@@ -8,51 +8,50 @@ Examples:
 """
 
 import argparse
-import sqlite3
 import csv
-from pathlib import Path
-from physics.collision import simulate_events
-
-DB_PATH = Path(__file__).resolve().parent / "colliderx.db"
+from physics.collision import simulate_events, init_event_db
+from db import get_conn
 
 
 def print_event_stats():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM events")
+        total_events = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) FROM events")
-    total_events = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT parent, COUNT(*) AS count, AVG(energy) AS avg_energy
+            FROM events
+            GROUP BY parent
+            ORDER BY count DESC
+            """
+        )
+        parent_stats = cur.fetchall()
 
-    cur.execute("""
-        SELECT parent, COUNT(*) AS count, AVG(energy) AS avg_energy
-        FROM events
-        GROUP BY parent
-        ORDER BY count DESC
-    """)
-    parent_stats = cur.fetchall()
+        cur.execute(
+            """
+            SELECT decay_mode, COUNT(*) AS count
+            FROM events
+            GROUP BY decay_mode
+            ORDER BY count DESC
+            LIMIT 10
+            """
+        )
+        decay_modes = cur.fetchall()
 
-    cur.execute("""
-        SELECT decay_mode, COUNT(*) AS count
-        FROM events
-        GROUP BY decay_mode
-        ORDER BY count DESC
-        LIMIT 10
-    """)
-    decay_modes = cur.fetchall()
-
-    cur.execute("""
-        SELECT e.id, e.parent, e.energy, SUM(f.E) AS daughter_sum
-        FROM events e
-        JOIN final_states f ON e.id = f.event_id
-        GROUP BY e.id
-        LIMIT 200
-    """)
-    energy_violations = 0
-    for event_id, parent, parent_E, daughter_sum in cur.fetchall():
-        if abs(parent_E - daughter_sum) > 1e-3:
-            energy_violations += 1
-
-    conn.close()
+        cur.execute(
+            """
+            SELECT e.id, e.parent, e.energy, SUM(f.E) AS daughter_sum
+            FROM events e
+            JOIN final_states f ON e.id = f.event_id
+            GROUP BY e.id
+            LIMIT 200
+            """
+        )
+        energy_violations = 0
+        for event_id, parent, parent_E, daughter_sum in cur.fetchall():
+            if abs(parent_E - daughter_sum) > 1e-3:
+                energy_violations += 1
 
     print("\n📊 Database Statistics")
     print("=" * 60)
@@ -72,27 +71,26 @@ def print_event_stats():
 
 def export_events_to_csv(event_ids, filename):
     """Export selected events to CSV."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
     rows_written = 0
-
-    with open(filename, "w", newline="") as f:
+    with get_conn() as conn, conn.cursor() as cur, open(filename, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["event_id", "parent", "decay_mode", "daughter", "E", "px", "py", "pz"])
         for eid in event_ids:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT e.id, e.parent, e.decay_mode, f.particle, f.E, f.px, f.py, f.pz
                 FROM events e
                 JOIN final_states f ON e.id = f.event_id
-                WHERE e.id = ?
+                WHERE e.id = %s
                 ORDER BY f.id
-            """, (eid,))
+                """,
+                (eid,),
+            )
             ev_rows = cur.fetchall()
             if ev_rows:
                 writer.writerows(ev_rows)
                 rows_written += len(ev_rows)
 
-    conn.close()
     print(f"📄 Exported {len(event_ids)} events ({rows_written} rows) to {filename}")
 
 
@@ -108,6 +106,9 @@ def build_parser():
 
 
 def main():
+    # Initialize DB schema once at startup (not per event)
+    init_event_db()
+
     parser = build_parser()
     parser.add_argument("--particle", required=True, help='Parent particle name (e.g. "Pion+", "Z boson")')
     parser.add_argument("--events", type=int, default=10, help="Number of events (default 10)")
@@ -138,21 +139,72 @@ def main():
     )
 
     print("\n" + "=" * 60)
-    print("✅ Generation Complete")
+    print("✅ Pipeline Complete")
     print("=" * 60)
     print(f"Successful events : {results['success']}/{results['total']}")
     print(f"Failed events     : {results['failed']}")
-    print(f"Success rate      : {results['success_rate']:.2%}")
-    if results["event_ids"]:
-        print(f"Event ID range    : {min(results['event_ids'])} - {max(results['event_ids'])}")
-        if len(results["event_ids"]) <= 20:
-            print(f"Event IDs         : {results['event_ids']}")
-    else:
-        print("No events generated.")
+    success_rate = (results['success'] / results['total']) if results['total'] > 0 else 0.0
+    print(f"Success rate      : {success_rate:.2%}")
+    print(f"\nTiming:")
+    print(f"  Generation : {results['gen_time']:.3f}s ({results['success']/results['gen_time']:.0f} evt/sec)")
+    print(f"  Storage    : {results['store_time']:.3f}s")
+    print(f"  Total      : {results['gen_time'] + results['store_time']:.3f}s")
+    
+    # Enhanced statistics from DB
+    if results['success'] > 0:
+        print("\n📊 Physics Summary")
+        print("-" * 60)
+        with get_conn() as conn, conn.cursor() as cur:
+            # Decay mode distribution (filtered by current run timestamp)
+            cur.execute("""
+                SELECT decay_mode, COUNT(*) as count
+                FROM events
+                WHERE parent = %s AND timestamp = %s
+                GROUP BY decay_mode
+                ORDER BY count DESC
+            """, (args.particle, results['run_timestamp']))
+            modes = cur.fetchall()
+            print("\nDecay modes sampled:")
+            for mode, count in modes:
+                pct = 100 * count / results['success']
+                print(f"  {mode:30s}: {count:6d} ({pct:5.2f}%)")
+            
+            # Final state particle counts (filtered by current run timestamp)
+            cur.execute("""
+                SELECT particle, COUNT(*) as count
+                FROM final_states fs
+                JOIN events e ON fs.event_id = e.id
+                WHERE e.parent = %s AND e.timestamp = %s
+                GROUP BY particle
+                ORDER BY count DESC
+            """, (args.particle, results['run_timestamp']))
+            particles = cur.fetchall()
+            print("\nFinal state particles produced:")
+            for particle, count in particles:
+                print(f"  {particle:30s}: {count:6d}")
+            
+            # Energy statistics (filtered by current run timestamp)
+            cur.execute("""
+                SELECT 
+                    AVG(E) as avg_E,
+                    MIN(E) as min_E,
+                    MAX(E) as max_E,
+                    STDDEV(E) as std_E
+                FROM final_states fs
+                JOIN events e ON fs.event_id = e.id
+                WHERE e.parent = %s AND e.timestamp = %s
+            """, (args.particle, results['run_timestamp']))
+            avg_E, min_E, max_E, std_E = cur.fetchone()
+            print(f"\nDaughter energy distribution (MeV):")
+            print(f"  Average  : {avg_E:.3f}")
+            print(f"  Std Dev  : {std_E:.3f}")
+            print(f"  Min      : {min_E:.3f}")
+            print(f"  Max      : {max_E:.3f}")
+    
     print("=" * 60 + "\n")
 
     if args.output:
-        export_events_to_csv(results["event_ids"], args.output)
+        print("⚠️ Export skipped: event IDs not available from simulate_events().")
 
     if args.stats and results["success"] > 0:
         print_event_stats()
