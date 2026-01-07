@@ -106,17 +106,16 @@ def build_parser():
 
 
 def main():
-    # Initialize DB schema once at startup (not per event)
-    init_event_db()
-
-    parser = build_parser()
-    parser.add_argument("--particle", required=True, help='Parent particle name (e.g. "Pion+", "Z boson")')
-    parser.add_argument("--events", type=int, default=10, help="Number of events (default 10)")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed (optional)")
-    parser.add_argument("--weight", type=float, default=1.0, help="Event weight (default 1.0)")
-    parser.add_argument("--verbose", action="store_true", help="Show progress output")
-    parser.add_argument("--stats", action="store_true", help="Print DB statistics after generation")
-    parser.add_argument("--output", type=str, help="Export generated events to CSV file")
+    parser = argparse.ArgumentParser(description="ColliderX Monte Carlo Event Generator")
+    parser.add_argument("--particle", required=True, help="Parent particle name")
+    parser.add_argument("--events", type=int, default=1000, help="Number of events")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed")
+    parser.add_argument("--weight", type=float, default=1.0, help="Event weight")
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    parser.add_argument("--stats", action="store_true", help="Show statistics")
+    parser.add_argument("--output", default=None, help="Output file")
+    parser.add_argument("--store-neutrinos", action="store_true", help="Store neutrinos in final_states table (needed for Dalitz plots)")
+    
     args = parser.parse_args()
 
     print("\n" + "=" * 60)
@@ -130,28 +129,29 @@ def main():
         print(f"CSV Output       : {args.output}")
     print("=" * 60 + "\n")
 
-    results = simulate_events(
+    result = simulate_events(
         parent_name=args.particle,
         n_events=args.events,
-        event_weight=args.weight,
         seed=args.seed,
-        verbose=args.verbose
+        event_weight=args.weight,
+        verbose=args.verbose,
+        store_neutrinos=args.store_neutrinos  # Pass the flag
     )
 
     print("\n" + "=" * 60)
     print("✅ Pipeline Complete")
     print("=" * 60)
-    print(f"Successful events : {results['success']}/{results['total']}")
-    print(f"Failed events     : {results['failed']}")
-    success_rate = (results['success'] / results['total']) if results['total'] > 0 else 0.0
+    print(f"Successful events : {result['success']}/{result['total']}")
+    print(f"Failed events     : {result['failed']}")
+    success_rate = (result['success'] / result['total']) if result['total'] > 0 else 0.0
     print(f"Success rate      : {success_rate:.2%}")
     print(f"\nTiming:")
-    print(f"  Generation : {results['gen_time']:.3f}s ({results['success']/results['gen_time']:.0f} evt/sec)")
-    print(f"  Storage    : {results['store_time']:.3f}s")
-    print(f"  Total      : {results['gen_time'] + results['store_time']:.3f}s")
+    print(f"  Generation : {result['gen_time']:.3f}s ({result['success']/result['gen_time']:.0f} evt/sec)")
+    print(f"  Storage    : {result['store_time']:.3f}s")
+    print(f"  Total      : {result['gen_time'] + result['store_time']:.3f}s")
     
     # Enhanced statistics from DB
-    if results['success'] > 0:
+    if result['success'] > 0:
         print("\n📊 Physics Summary")
         print("-" * 60)
         with get_conn() as conn, conn.cursor() as cur:
@@ -162,11 +162,11 @@ def main():
                 WHERE parent = %s AND timestamp = %s
                 GROUP BY decay_mode
                 ORDER BY count DESC
-            """, (args.particle, results['run_timestamp']))
+            """, (args.particle, result['run_timestamp']))
             modes = cur.fetchall()
             print("\nDecay modes sampled:")
             for mode, count in modes:
-                pct = 100 * count / results['success']
+                pct = 100 * count / result['success']
                 print(f"  {mode:30s}: {count:6d} ({pct:5.2f}%)")
             
             # Final state particle counts (filtered by current run timestamp)
@@ -177,7 +177,7 @@ def main():
                 WHERE e.parent = %s AND e.timestamp = %s
                 GROUP BY particle
                 ORDER BY count DESC
-            """, (args.particle, results['run_timestamp']))
+            """, (args.particle, result['run_timestamp']))
             particles = cur.fetchall()
             print("\nFinal state particles produced:")
             for particle, count in particles:
@@ -193,7 +193,7 @@ def main():
                 FROM final_states fs
                 JOIN events e ON fs.event_id = e.id
                 WHERE e.parent = %s AND e.timestamp = %s
-            """, (args.particle, results['run_timestamp']))
+            """, (args.particle, result['run_timestamp']))
             avg_E, min_E, max_E, std_E = cur.fetchone()
             print(f"\nDaughter energy distribution (MeV):")
             print(f"  Average  : {avg_E:.3f}")
@@ -206,7 +206,7 @@ def main():
     if args.output:
         print("⚠️ Export skipped: event IDs not available from simulate_events().")
 
-    if args.stats and results["success"] > 0:
+    if args.stats and result["success"] > 0:
         print_event_stats()
 
 
