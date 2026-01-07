@@ -194,21 +194,203 @@ def check_conservation(parent_fv, daughter_fvs, tol=1e-6):
 
 #### What is Phase Space?
 
-The **volume of momentum space** accessible to final-state particles, subject to:
+**Intuitive explanation**: Phase space is the "volume of possibilities" for where decay products can go while obeying physics laws.
 
-1. **Mass-shell constraint**: E² - p⃗² = m²
-2. **Energy conservation**: Σ Eᵢ = M
-3. **Momentum conservation**: Σ p⃗ᵢ = 0 (rest frame)
+Think of it like this:
+- You have a parent particle at rest with mass M
+- It decays into N daughter particles with masses m₁, m₂, ..., mₙ
+- **Question**: What are all the possible ways to distribute energy and momentum among daughters?
+
+**Phase space** = The set of all valid configurations
+
+#### Physical Constraints
+
+Phase space is restricted by three fundamental laws:
+
+1. **Mass-shell constraint** (special relativity)
+   ```
+   E² - p⃗² = m²  (each particle has fixed mass)
+   ```
+   - Particles aren't "off-shell" (except virtual intermediates)
+   - This is Einstein's E=mc² in relativistic form
+
+2. **Energy conservation**
+   ```
+   Σ Eᵢ = M  (total energy equals parent mass)
+   ```
+   - Energy can't be created or destroyed
+   - Daughters share parent's rest energy
+
+3. **Momentum conservation**
+   ```
+   Σ p⃗ᵢ = 0  (in parent's rest frame)
+   ```
+   - Total momentum must sum to zero
+   - If one particle goes left, another goes right
+
+#### Why Phase Space Matters
+
+**Two particles can decay differently**:
+
+| Aspect | Phase Space Determines |
+|--------|------------------------|
+| **Kinematics** | Where particles go (directions, energies) |
+| **Rate** | How often decay happens (larger volume → more decays) |
+| **Threshold** | Minimum energy needed (M ≥ Σmᵢ) |
+
+**Example**: Why does μ⁻ decay easily but proton doesn't?
+```
+μ⁻ → e⁻ ν̄ₑ νμ  ✅ (105.7 MeV > 0.5 MeV + 0 + 0)
+p → e⁺ π⁰        ❌ (938 MeV < 940 MeV, not enough mass!)
+```
+
+Proton is **stable** because phase space volume is ZERO (no allowed configurations).
 
 #### Lorentz-Invariant Phase Space (LIPS)
 
-The differential phase space element in 3+1 dimensions:
+The mathematical formula describing phase space:
 
 ```
 dΠₙ = Πᵢ [d³pᵢ / (2Eᵢ(2π)³)] × (2π)⁴ δ⁴(P_initial - Σ pᵢ)
 ```
 
-**Critical insight**: Sample in **invariant mass squared** (m²) not m, to maintain Lorentz invariance.
+**Breaking it down**:
+
+| Symbol | Meaning | Why It's There |
+|--------|---------|----------------|
+| `d³pᵢ` | Volume element in momentum space | We're integrating over all possible momenta |
+| `2Eᵢ` | Relativistic normalization | Makes measure Lorentz-invariant |
+| `δ⁴(...)` | Dirac delta function | Enforces energy-momentum conservation |
+| `(2π)` factors | Quantum mechanics convention | From Fourier transforms |
+
+**The key property**: LIPS is **Lorentz-invariant**
+- Same in all reference frames
+- Physics doesn't depend on observer's velocity
+
+#### Critical Insight: Sample m² not m
+
+**Wrong way** (violates Lorentz invariance):
+```python
+m12 = uniform(m12_min, m12_max)  # ❌ Non-physical!
+```
+
+**Right way** (Lorentz-invariant):
+```python
+m12_sq = uniform(m12_min**2, m12_max**2)  # ✅ Correct!
+m12 = sqrt(m12_sq)
+```
+
+**Why?**
+- Phase space density: `dΠ ∝ dm₁₂²` (from relativistic integration)
+- Uniformly sampling `m₁₂²` gives correct physics
+- Uniformly sampling `m₁₂` would over-weight low masses
+
+**Analogy**: 
+- Sampling angles uniformly in θ → wrong (bunches at poles)
+- Sampling uniformly in cos θ → right (uniform on sphere)
+- Similarly: sample m² not m
+
+#### Phase Space Volume
+
+The "size" of phase space depends on available energy:
+
+```python
+# Available phase space increases with parent mass
+M = 1000 MeV  →  Large phase space  →  Many possible configurations
+M = 100 MeV   →  Small phase space  →  Few possible configurations
+M = Σmᵢ       →  Zero phase space   →  Decay at threshold (all particles at rest)
+M < Σmᵢ       →  No phase space     →  Decay forbidden!
+```
+
+**Graphically**:
+```
+Phase Space Volume vs. Available Energy
+
+  Volume │     ╱
+         │    ╱
+         │   ╱
+         │  ╱
+         │ ╱
+         │╱________
+         └─────────── Energy above threshold
+           0
+```
+
+Volume grows as **~(M - Σmᵢ)^(3N-4)** (for N-body decay).
+
+#### Connection to Decay Rate
+
+Full decay rate formula:
+```
+Γ = (1/2M) ∫ |M|² dΠₙ
+```
+
+**Two parts**:
+1. **dΠₙ**: Phase space (kinematics) ← What we implement
+2. **Matrix element** (|M|²): Physics amplitude
+   ```python
+   decay_key = (parent_pdg, tuple(sorted(daughter_pdgs)))
+   me = get_matrix_element(decay_key)
+   M2 = me.M2(parent_p4, daughter_p4s)
+   ```
+
+3. **Total weight**:
+   ```python
+   total_weight = ps_weight * M2
+   ```
+
+#### Visual Example: Muon Decay Phase Space
+
+For **μ⁻ → e⁻ ν̄ₑ νμ**, available energy = 105.7 MeV:
+
+```
+Electron Energy Distribution (Phase Space Only)
+
+  Events │     ╱╲
+         │    ╱  ╲
+         │   ╱    ╲
+         │  ╱      ╲
+         │ ╱        ╲___
+         └──────────────── E_e (MeV)
+           0        52.8
+
+(Bell-shaped curve from phase space alone)
+```
+
+Add **Michel spectrum** (matrix element):
+```
+Electron Energy Distribution (With V-A Physics)
+
+  Events │        ╱╲
+         │       ╱  ╲
+         │      ╱    ╲
+         │     ╱      ╲
+         │    ╱        ╲__
+         └──────────────── E_e (MeV)
+           0        52.8
+
+(Peak shifts to ~40 MeV due to V-A interaction)
+```
+
+#### Phase Space in Practice
+
+Our implementation strategy:
+
+| N-body | Strategy | Function |
+|--------|----------|----------|
+| **2-body** | Direct calculation | `two_body_decay()` |
+| **3-body** | Raubold-Lynch (virtual particle) | `generate_three_body_decay()` |
+| **N-body** | Recursive virtual particles | `generate_n_body_decay()` |
+
+**Why virtual particles?**
+- Break complex N-body into simpler 2-body steps
+- Each step maintains Lorentz invariance
+- Jacobians automatically correct
+
+**Key takeaway**: 
+> Phase space tells us **WHERE** particles can go.  
+> Matrix elements tell us **HOW OFTEN** they go there.  
+> Together they give complete physics! 🎯
 
 ---
 
@@ -1429,94 +1611,4 @@ def check_quantum_numbers(parent_pdg, daughter_pdgs):
 
 ```python
 # physics/collision.py::simulate_events
-results = check_quantum_numbers(parent_pdg, daughter_pdgs)
-
-if not results["charge_conserved"]:
-    raise ValueError("Charge not conserved!")
-```
-
----
-
-## 🚦 Design Decisions
-
-### Core Principles
-
-| Principle | Rationale |
-|-----------|-----------|
-| **No physics in database** | DB stores data, not algorithms |
-| **Cached lookups** | Particle properties fetched once per run |
-| **Tuple-based 4-vectors** | Avoid NumPy overhead in hot paths |
-| **Weighted events** | Store all events with weights (no rejection) |
-| **Single transaction** | All events written at once (10× faster) |
-| **Proper Lorentz invariance** | Sample m² not m, use correct Jacobians |
-| **Matrix element separation** | Phase space ≠ physics (clean architecture) |
-
----
-
-## 🎯 Production-Ready Features
-
-### Correctness ✅
-
-- ✅ Raubold-Lynch algorithm with proper Jacobians
-- ✅ Conservation checks to machine precision (~10⁻¹⁰)
-- ✅ Lorentz-covariant boost operations
-- ✅ Matrix element registry for physics modeling
-
-### Performance ⚡
-
-- ✅ **10,000+ events/sec** with matrix elements
-- ✅ Zero DB queries in event loop
-- ✅ Batch persistence (10× faster than row-by-row)
-- ✅ Cached particle properties
-
-### Extensibility 🔌
-
-- ✅ Add new matrix elements via registry
-- ✅ Database-driven particle properties
-- ✅ Modular architecture (clean separation of concerns)
-
-### Validation 🧪
-
-- ✅ 20+ tests covering edge cases
-- ✅ Threshold behavior tests
-- ✅ Boost consistency checks
-- ✅ Real PDG masses from database
-
-### Database Integrity 🗄️
-
-- ✅ Foreign key constraints
-- ✅ Uniqueness constraints on PDG IDs
-- ✅ JSON storage for 4-vectors (easy analysis)
-
----
-
-## 📚 Further Reading
-
-### Particle Physics
-
-- **Particle Data Group**: [pdg.lbl.gov](https://pdg.lbl.gov)
-- **Review of Kinematics**: PDG Chapter on Kinematics
-- **Weak Interactions**: Griffiths, "Introduction to Elementary Particles"
-
-### Algorithms
-
-- **Raubold-Lynch**: F. James, "Monte Carlo Phase Space" (CERN Yellow Report)
-- **Phase Space Integration**: Byckling & Kajantie, "Particle Kinematics"
-
-### Software Engineering
-
-- **Event Generators**: Pythia8 manual, Herwig++ documentation
-- **Database Design**: PostgreSQL documentation on JSONB
-
-
-
-## 🙏 Acknowledgments
-
-- **Particle Data Group** for PDG standards
-- **CERN** for Monte Carlo techniques
-- **PostgreSQL** community for robust database system
-- **NumPy** team for numerical computing tools
-
----
-
-**ColliderX**: Where physics meets performance 🚀
+results = check_quantum_numbers(parent_pdg, daughter_pdg
