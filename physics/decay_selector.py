@@ -1,8 +1,8 @@
 import random
 import re
+import numpy as np
 from typing import List, Tuple, Optional, Dict
 from db import get_conn
-
 
 def _conn():
     # Alias to avoid refactor churn; uses shared db.get_conn (psycopg2)
@@ -10,6 +10,9 @@ def _conn():
 
 # Simple in-memory cache: pdg_id -> List[(mode_text, br)]
 _CACHE: Dict[int, List[Tuple[str, float]]] = {}
+
+# NEW: Cache for decay products
+_DECAY_PRODUCTS_CACHE: Dict[tuple, List[str]] = {}
 
 # Updated canonicalization map matching your actual DB particle names
 _CANON = {
@@ -135,26 +138,22 @@ def get_decay_modes(pdg_id: int) -> List[Tuple[str, float]]:
     return modes
 
 
-def choose_decay_mode(pdg_id: int, rng: Optional[random.Random] = None) -> str:
+def choose_decay_mode(pdg_id: int, rng=None) -> str:
     """
     Choose a decay mode string using branching fractions as probabilities.
     Returns 'stable' if no usable modes/weights.
     """
-    rng = rng or random.Random()
+    rng = rng or np.random.default_rng()
     modes = get_decay_modes(pdg_id)
     if not modes:
         return "stable"
 
-    names, weights = zip(*modes)
-    # Clamp negatives to zero
-    weights = [w if w > 0.0 else 0.0 for w in weights]
-    total = sum(weights)
-    if total <= 0.0:
-        return "stable"
+    names = [m[0] for m in modes]
+    brs = np.array([m[1] for m in modes], dtype=float)
+    norm = brs / brs.sum()
 
-    # Normalize and sample
-    norm = [w / total for w in weights]
-    return rng.choices(names, weights=norm, k=1)[0]
+    # numpy Generator supports .choice with probabilities
+    return rng.choice(names, p=norm)
 
 
 def choose_decay_daughters(pdg_id: int, rng: Optional[random.Random] = None) -> List[str]:
@@ -173,9 +172,16 @@ def choose_decay_daughters(pdg_id: int, rng: Optional[random.Random] = None) -> 
 
 def get_decay_products(pdg_id: int, decay_mode: str) -> List[str]:
     """
-    Returns ordered list of daughter particle names.
-    Enforces uniqueness of product_index to prevent hallucinated decays.
+    Return canonicalized daughter names for a decay mode.
+    Uses in-memory cache to avoid repeated DB queries.
     """
+    key = (pdg_id, decay_mode)
+    
+    # Check cache first
+    if key in _DECAY_PRODUCTS_CACHE:
+        return _DECAY_PRODUCTS_CACHE[key]
+    
+    # Query DB only on cache miss
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
@@ -189,16 +195,16 @@ def get_decay_products(pdg_id: int, decay_mode: str) -> List[str]:
         rows = cur.fetchall()
 
     if not rows:
-        raise RuntimeError(f"No decay products for PDG {pdg_id} mode '{decay_mode}'")
-
-    # Guardrail: check for duplicate product_index (data corruption detector)
-    product_indices = [r[0] for r in rows]
-    if len(product_indices) != len(set(product_indices)):
-        raise ValueError(
-            f"Duplicate product_index in decay_products for PDG {pdg_id} mode '{decay_mode}'. "
-            "This indicates DB corruption. Clean and re-seed."
+        raise RuntimeError(
+            f"No decay products for PDG {pdg_id} mode '{decay_mode}'"
         )
 
-    # Extract products in order
+    indices = [r[0] for r in rows]
+    if len(indices) != len(set(indices)):
+        raise ValueError("Duplicate product_index detected")
+
     products = [r[1] for r in rows]
+    
+    # Store in cache
+    _DECAY_PRODUCTS_CACHE[key] = products
     return products

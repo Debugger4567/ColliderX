@@ -31,9 +31,20 @@ class FourVector:
         return float(np.linalg.norm(self.p))
 
     @property
-    def mass(self) -> float:
+    def invariant_mass(self) -> float:
+        """Lorentz-invariant mass of the four-vector."""
         m2 = self.E * self.E - self.magnitude * self.magnitude
         return math.sqrt(max(m2, 0.0))
+    
+    @property
+    def mass(self) -> float:
+        """Alias for backward compatibility. Use invariant_mass instead."""
+        warnings.warn(
+            "FourVector.mass is deprecated. Use invariant_mass instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.invariant_mass
 
     def beta(self) -> np.ndarray:
         if self.E == 0.0:
@@ -51,6 +62,10 @@ class FourVector:
 
     def __sub__(self, other: "FourVector") -> "FourVector":
         return FourVector(self.E - other.E, self.px - other.px, self.py - other.py, self.pz - other.pz)
+
+    def to_tuple(self) -> tuple:
+        """Convert to (E, px, py, pz) for matrix element interface."""
+        return (self.E, self.px, self.py, self.pz)
 
     def __repr__(self) -> str:
         return f"FourVector(E={self.E:.6f}, px={self.px:.6f}, py={self.py:.6f}, pz={self.pz:.6f})"

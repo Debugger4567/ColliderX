@@ -12,6 +12,7 @@ class Particle:
 
     def __init__(self, name_or_symbol: str, px=0.0, py=0.0, pz=0.0):
         data = self.lookup_particle(name_or_symbol)
+        self.pdg_id = data.get("PDG ID")
         self.name = data["Name"]
         self.symbol = data.get("Symbol", "")
         self.mass = data.get("Mass (MeV/c^2)", 0.0)
@@ -44,7 +45,7 @@ class Particle:
         with get_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT "Name", "Symbol", "Mass (MeV/c^2)", "Charge (e)", "Spin",
+                SELECT "PDG ID", "Name", "Symbol", "Mass (MeV/c^2)", "Charge (e)", "Spin",
                        "Baryon Number", "Le", "Lmu", "Ltau", "Strangeness",
                        "Charm", "Bottomness", "Topness"
                 FROM particles

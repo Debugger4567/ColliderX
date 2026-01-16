@@ -65,7 +65,6 @@ def main():
     used = 0
     skipped = 0
 
-    # FIXED: Match exact DB names from your output
     required_particles = ["Electron", "Muon neutrino", "Electron antineutrino"]
 
     for event_id, particles in events.items():
@@ -98,19 +97,18 @@ def main():
 
     # ---------- PLOT ----------
     plt.figure(figsize=(8, 7))
-    plt.hist2d(x_e, x_nubar, bins=50, weights=W, cmap='viridis', range=[[0, 1], [0, 1]], alpha=0.5, label='V-A')
-    plt.hist2d(x_e, x_nubar, bins=50, weights=W, cmap='Reds', range=[[0, 1], [0, 1]], alpha=0.5, label='Flat PS')
+    bins = 60
+    h = plt.hist2d(x_e, x_nubar, bins=bins, weights=W, cmap='viridis', range=[[0, 1], [0, 1]])
 
     plt.xlabel(r"$x_e = 2E_e / m_\mu$", fontsize=12)
     plt.ylabel(r"$x_{\bar{\nu}_e} = 2E_{\bar{\nu}_e} / m_\mu$", fontsize=12)
     plt.title(r"Dalitz plot: $\mu^- \to e^- \bar{\nu}_e \nu_\mu$", fontsize=14)
-    plt.colorbar(label="Event weight")
+    plt.colorbar(h[3], label="Event weight")
 
-    # Kinematic boundary: x_e + x_nubar + x_numu = 2
-    x_boundary = np.linspace(0, 1, 100)
-    y_boundary = 2 - x_boundary
-    y_boundary = np.clip(y_boundary, 0, 1)
-    plt.plot(x_boundary, y_boundary, 'r--', linewidth=2, label='Kinematic limit')
+    # Kinematic boundary inside [0,1]^2: x_e + x_nubar = 1 (x_{νμ} = 1)
+    x_boundary = np.linspace(0, 1, 200)
+    y_boundary = 1 - x_boundary
+    plt.plot(x_boundary, y_boundary, 'r--', linewidth=2, label=r'$x_e + x_{\bar{\nu}_e} = 1$')
 
     plt.legend(fontsize=10)
     plt.xlim(0, 1)

@@ -115,7 +115,9 @@ def main():
     parser.add_argument("--stats", action="store_true", help="Show statistics")
     parser.add_argument("--output", default=None, help="Output file")
     parser.add_argument("--store-neutrinos", action="store_true", help="Store neutrinos in final_states table (needed for Dalitz plots)")
-    
+    parser.add_argument("--unweighted", action="store_true", help="Enable accept-reject unweighting")
+    parser.add_argument("--warmup", type=int, default=800, help="Warm-up events for w_max")
+
     args = parser.parse_args()
 
     print("\n" + "=" * 60)
@@ -135,7 +137,9 @@ def main():
         seed=args.seed,
         event_weight=args.weight,
         verbose=args.verbose,
-        store_neutrinos=args.store_neutrinos  # Pass the flag
+        store_neutrinos=args.store_neutrinos,
+        use_accept_reject=args.unweighted,     # NEW
+        warmup_events=args.warmup,             # NEW
     )
 
     print("\n" + "=" * 60)

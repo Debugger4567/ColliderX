@@ -11,187 +11,102 @@ from db import get_conn
 class EventDB:
     """
     Handles creation and storage of simulated decay/collision events in colliderx.db.
-    Each event stores the parent name, daughter particles with 4-vectors,
-    and automatically validates conservation laws.
+    Uses a persistent connection for performance.
     """
 
     def __init__(self):
+        self.conn = get_conn()
         self.create_table()
 
     @contextmanager
-    def get_connection(self):
-        """Context manager for safe DB access."""
-        conn = get_conn()
+    def cursor(self):
+        """Context manager for cursor with auto-commit."""
+        cur = self.conn.cursor()
         try:
-            yield conn
-            conn.commit()
+            yield cur
+            self.conn.commit()
         finally:
-            conn.close()
+            cur.close()
 
     def create_table(self):
         """Create the 'events' table with conservation tracking."""
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS events (
-                        event_id SERIAL PRIMARY KEY,
-                        event_type TEXT,
-                        process_tag TEXT,
-                        parent_name TEXT,
-                        parent_mass DOUBLE PRECISION,
-                        daughter_names TEXT,
-                        E_values TEXT,
-                        px_values TEXT,
-                        py_values TEXT,
-                        pz_values TEXT,
-                        energy_conserved INTEGER,
-                        momentum_conserved INTEGER,
-                        invariant_mass DOUBLE PRECISION,
-                        timestamp TEXT
-                    )
-                    """
+        with self.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id SERIAL PRIMARY KEY,
+                    event_type TEXT,
+                    process_tag TEXT,
+                    parent TEXT,
+                    decay_mode TEXT,
+                    energy DOUBLE PRECISION CHECK (energy > 0),
+                    weight DOUBLE PRECISION DEFAULT 1.0,
+                    timestamp TEXT
                 )
+                """
+            )
 
     def store_event(
         self,
         parent_name: str,
-        parent_mass: float,
+        decay_mode: str,
+        energy: float,
         daughters: List[tuple[str, FourVector]],
         event_type: str = "decay",
         process_tag: Optional[str] = None,
-        energy_tolerance: float = 1e-6,
-        momentum_tolerance: float = 1e-6
+        weight: float = 1.0,
     ):
         """
-        Store a single event with automatic conservation validation.
+        Store a single event in the database.
         
         Args:
-            parent_name: Name of parent particle
-            parent_mass: Rest mass of parent (GeV)
+            parent_name: Name of parent particle (maps to DB 'parent')
+            decay_mode: Decay channel string (e.g., "π0 → γ γ")
+            energy: Parent energy in MeV (from parent.fourvec.E)
             daughters: List of (name, FourVector) tuples
-            event_type: "two_body_decay", "three_body_decay", "collision", etc.
-            process_tag: Optional physics label, e.g., "H → γγ"
-            energy_tolerance: Threshold for energy conservation check
-            momentum_tolerance: Threshold for momentum conservation check
+            event_type: Type of decay process
+            process_tag: Optional physics label
+            weight: Matrix element weight (default 1.0 for unweighted)
         """
         if not process_tag:
-            daughter_symbols = " ".join(name for name, _ in daughters)
-            process_tag = f"{parent_name} → {daughter_symbols}"
+            process_tag = f"{parent_name} → {' '.join(name for name, _ in daughters)}"
 
-        # Extract FourVectors
-        daughter_names = json.dumps([name for name, _ in daughters])
-        fvs = [fv for _, fv in daughters]
-        
-        # Serialize 4-momenta
-        E_vals = json.dumps([fv.E for fv in fvs])
-        px_vals = json.dumps([fv.px for fv in fvs])
-        py_vals = json.dumps([fv.py for fv in fvs])
-        pz_vals = json.dumps([fv.pz for fv in fvs])
-        
-        # Calculate totals
-        total_E = sum(fv.E for fv in fvs)
-        total_p = np.sum([fv.p for fv in fvs], axis=0)
-        
-        # Check conservation
-        energy_conserved = abs(total_E - parent_mass) < energy_tolerance
-        momentum_conserved = np.linalg.norm(total_p) < momentum_tolerance
-        
-        # Calculate invariant mass of daughters
-        p_squared = np.dot(total_p, total_p)
-        invariant_mass = math.sqrt(max(total_E**2 - p_squared, 0.0))
-        
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO events (
-                        event_type, process_tag, parent_name, parent_mass,
-                        daughter_names, E_values, px_values, py_values, pz_values,
-                        energy_conserved, momentum_conserved, invariant_mass, timestamp
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        event_type, process_tag, parent_name, parent_mass,
-                        daughter_names, E_vals, px_vals, py_vals, pz_vals,
-                        int(energy_conserved), int(momentum_conserved),
-                        invariant_mass, datetime.now().isoformat(timespec="seconds"),
-                    ),
-                )
+        with self.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO events (
+                    parent, decay_mode, energy, event_type, process_tag, weight, timestamp
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    parent_name,
+                    decay_mode,
+                    energy,
+                    event_type,
+                    process_tag,
+                    weight,
+                    datetime.now().isoformat(timespec="seconds"),
+                ),
+            )
 
     def parse_event(self, event_id: int) -> Optional[Dict[str, Any]]:
         """
-        Reconstruct event with FourVector objects.
-        Returns None if event_id not found.
+        Legacy: columns don't match current DB schema. Use raw SQL queries instead.
         """
+        return None
+
+    # def parse_event_old(self, event_id: int) -> Optional[Dict[str, Any]]:
+
+    def list_events(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Fetch recent events from database."""
         with self.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM events WHERE event_id = %s", (event_id,))
-                row = cur.fetchone()
-                columns = [desc[0] for desc in cur.description] if cur.description else []
-        
-        if not row:
-            return None
-
-        row_dict = dict(zip(columns, row))
-        
-        # Deserialize arrays
-        E_vals = json.loads(row_dict["E_values"])
-        px_vals = json.loads(row_dict["px_values"])
-        py_vals = json.loads(row_dict["py_values"])
-        pz_vals = json.loads(row_dict["pz_values"])
-        daughter_names = json.loads(row_dict["daughter_names"])
-        
-        # Rebuild FourVectors
-        daughters = [
-            (name, FourVector(E, px, py, pz))
-            for name, E, px, py, pz in zip(daughter_names, E_vals, px_vals, py_vals, pz_vals)
-        ]
-        
-        return {
-            "event_id": row_dict["event_id"],
-            "event_type": row_dict["event_type"],
-            "process_tag": row_dict["process_tag"],
-            "parent_name": row_dict["parent_name"],
-            "parent_mass": row_dict["parent_mass"],
-            "daughters": daughters,
-            "energy_conserved": bool(row_dict["energy_conserved"]),
-            "momentum_conserved": bool(row_dict["momentum_conserved"]),
-            "invariant_mass": row_dict["invariant_mass"],
-            "timestamp": row_dict["timestamp"],
-        }
-
-    def list_events(
-        self, 
-        limit: int = 10, 
-        event_type: Optional[str] = None,
-        conserved_only: bool = False
-    ) -> List[Dict[str, Any]]:
-        """
-        Return recent events, optionally filtered.
-        
-        Args:
-            limit: Max number of events to return
-            event_type: Filter by type (e.g., "two_body_decay")
-            conserved_only: Only return events with perfect conservation
-        """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                query = "SELECT * FROM events WHERE 1=1"
-                params = []
-
-                if event_type:
-                    query += " AND event_type = %s"
-                    params.append(event_type)
-
-                if conserved_only:
-                    query += " AND energy_conserved = 1 AND momentum_conserved = 1"
-
-                query += " ORDER BY event_id DESC LIMIT %s"
-                params.append(limit)
-
-                cur.execute(query, params)
-                columns = [desc[0] for desc in cur.description] if cur.description else []
+                cur.execute(
+                    "SELECT id, parent, decay_mode, energy, event_type, weight, timestamp "
+                    "FROM events ORDER BY id DESC LIMIT %s",
+                    (limit,)
+                )
+                columns = [desc[0] for desc in cur.description]
                 return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     def stats(self) -> Dict[str, Any]:
@@ -201,25 +116,12 @@ class EventDB:
                 cur.execute("SELECT COUNT(*) FROM events")
                 total = cur.fetchone()[0]
 
-                cur.execute("SELECT COUNT(*) FROM events WHERE energy_conserved = 1")
-                e_conserved = cur.fetchone()[0]
-
-                cur.execute("SELECT COUNT(*) FROM events WHERE momentum_conserved = 1")
-                p_conserved = cur.fetchone()[0]
-
-                cur.execute("SELECT COUNT(*) FROM events WHERE energy_conserved = 1 AND momentum_conserved = 1")
-                both_conserved = cur.fetchone()[0]
-
-                cur.execute("SELECT AVG(invariant_mass) FROM events WHERE invariant_mass IS NOT NULL")
-                avg_mass = cur.fetchone()[0] or 0.0
+                cur.execute("SELECT AVG(weight) FROM events")
+                avg_weight = cur.fetchone()[0] or 1.0
             
         return {
             "total_events": total,
-            "energy_conserved": e_conserved,
-            "momentum_conserved": p_conserved,
-            "both_conserved": both_conserved,
-            "average_invariant_mass": avg_mass,
-            "conservation_rate": both_conserved / total if total > 0 else 0.0
+            "average_weight": avg_weight,
         }
 
     def fetch_event(self, event_id: int) -> Optional[Dict[str, Any]]:

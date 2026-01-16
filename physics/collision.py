@@ -183,11 +183,17 @@ def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], r
     N = len(masses)
     
     # Get PDG IDs for matrix element lookup
+    # NOTE: Sorting PDGs prevents combinatorial key explosion.
+    # Daughter ordering is preserved separately via _reorder_daughters_for_matrix_element().
+    # Future: If CP-violating or ordering-sensitive decays needed, may need frozenset(daughter_pdgs) instead.
     daughter_pdgs = tuple(sorted([get_pdg_id_cached(name) or 0 for name in daughter_names]))
     decay_key = (parent_pdg, daughter_pdgs)
     
     # General 2-body decay
     if N == 2:
+        # NOTE: No matrix element applied for 2-body decays yet.
+        # Angular / spin distributions are currently pure phase space.
+        # TODO: Add helicity amplitudes, polarization dependence, angular distributions.
         m1, m2 = masses
         if parent_mass <= 0 or parent_mass + 1e-9 < (m1 + m2):
             raise ValueError("Kinematically forbidden 2-body decay")
@@ -236,61 +242,92 @@ def _simulate_event_inmemory(parent_name: str,
                              rng: np.random.Generator, 
                              M2_max: dict, 
                              event_index: int = 0, 
+                             use_accept_reject: bool = False,      # NEW
                              warmup_events: int = 500,
-                             run_timestamp: str = ""):
+                             run_timestamp: str = "",
+                             ar_inflate: float = 1.2):
     """
-    Generate event with all parent info pre-resolved. No DB lookups in loop.
-    
-    Args:
-        parent_name: Particle name (cached)
-        parent_mass: Pre-resolved mass
-        parent_pdg: Pre-resolved PDG ID
-        fixed_decay_mode: If single channel, bypass RNG
-        run_timestamp: Computed once per run
-        M2_max: UNUSED - accept-reject unweighting not yet implemented
-        warmup_events: UNUSED - accept-reject unweighting not yet implemented
+    Generate one event. Supports warm-up (M² max learning) and accept–reject.
+    Returns:
+      - ("WARMUP", None) during warm-up
+      - ("REJECTED", None) when A/R rejects
+      - ("ACCEPTED", (event_row, final_state_rows)) on success
+      - ("FAILED", None) on failure
     """
-    # Bypass decay mode selection if single channel
-    if fixed_decay_mode:
-        decay_mode = fixed_decay_mode
-    else:
-        decay_mode = choose_decay_mode(parent_pdg, rng)
-    
+    decay_mode = fixed_decay_mode or choose_decay_mode(parent_pdg, rng)
     if decay_mode == "stable":
-        return None
-    
+        return ("FAILED", None)
+
+    # Resolve daughters
     try:
         daughters = get_decay_products(parent_pdg, decay_mode)
     except Exception:
-        return None
-    
+        return ("FAILED", None)
+
     if not _is_kinematically_allowed(parent_mass, daughters):
-        return None
-    
+        return ("FAILED", None)
+
+    # Phase space only (no ME yet)
     try:
-        p4s_rest, total_weight = _generate_decay_fourvectors(parent_mass, daughters, rng, apply_weights=True, parent_pdg=parent_pdg)
+        apply_weights_flag = False
+        p4s_rest, ps_weight = _generate_decay_fourvectors(
+            parent_mass, daughters, rng, apply_weights=apply_weights_flag, parent_pdg=parent_pdg
+        )
+        assert not apply_weights_flag, "Phase-space weight must be applied exactly once (generator multiplies ps_weight * M2)."
     except Exception:
-        return None
-    
-    # Store weighted events (no accept-reject for now)
-    stored_weight = event_weight * total_weight
-    
+        return ("FAILED", None)
+
+    # Compute |M|^2
+    from .matrix_elements import get_matrix_element
+    parent_p4 = (parent_mass, 0.0, 0.0, 0.0)
+    daughter_pdgs = tuple(sorted([get_pdg_id_cached(n) or 0 for n in daughters]))
+    decay_key = (parent_pdg, daughter_pdgs)
+
+    ordered_p4s = _reorder_daughters_for_matrix_element(daughters, p4s_rest, parent_pdg)
+    me = get_matrix_element(decay_key)
+    M2 = float(me.M2(parent_p4, ordered_p4s, context=None))
+
+    # ---------- Warm-up: learn M²_max, skip storage ----------
+    # NOTE: Assumes stationary M² distribution (rest-frame parent).
+    # Frame-dependent: if parent is boosted (collider frame, ISR/FSR), M² envelope changes.
+    # Current scope: rest-frame decays only. Future: redesign for scattering processes.
+    if use_accept_reject and event_index < warmup_events:
+        M2_max[decay_key] = max(M2_max.get(decay_key, 0.0), M2)
+        return ("WARMUP", None)
+
+    # ---------- Accept–reject (unweighted) ----------
+    if use_accept_reject:
+        wmax = M2_max.get(decay_key, 0.0)
+        if wmax <= 0.0:
+            raise RuntimeError(
+                f"Accept–reject enabled but no M²_max learned for decay {decay_key}. "
+                f"Warm-up may be too short or decay mode not sampled. Fail loudly to prevent silent bias."
+            )
+        wmax *= ar_inflate  # safety margin
+        accept_prob = min(1.0, M2 / wmax)
+        if rng.random() > accept_prob:
+            return ("REJECTED", None)
+
+        stored_weight = 1.0
+        phase_space_weight = 1.0
+    else:
+        # Weighted path (ps_weight applied exactly once)
+        stored_weight = event_weight * (ps_weight * M2)
+        phase_space_weight = ps_weight
+
     event_row = (
         parent_name,
         decay_mode,
         parent_mass,
-        run_timestamp,  # Use pre-computed timestamp
+        run_timestamp,
         stored_weight,
-        total_weight,
+        phase_space_weight,
     )
-    
-    # Store final states as a list
     final_state_rows = [
         (name, float(fv[1]), float(fv[2]), float(fv[3]), float(fv[0]))
         for name, fv in zip(daughters, p4s_rest)
     ]
-    
-    return event_row, final_state_rows
+    return ("ACCEPTED", (event_row, final_state_rows))
 
 
 def _flush_batch(event_rows, final_state_groups, batch_size: int = 5000):
@@ -348,7 +385,8 @@ def simulate_events(parent_name: str,
                     verbose: bool = False,
                     warmup_events: int = 500,
                     use_accept_reject: bool = False,
-                    store_neutrinos: bool = False) -> dict:
+                    store_neutrinos: bool = False,
+                    ar_inflate: float = 1.2) -> dict:
     """
     High-performance batch event generator: pure RAM generation → single DB dump.
     
@@ -406,7 +444,7 @@ def simulate_events(parent_name: str,
     start_gen = datetime.now()
     
     for i in range(total):
-        result = _simulate_event_inmemory(
+        status, payload = _simulate_event_inmemory(
             parent_name, 
             parent_mass,
             parent_pdg,
@@ -415,23 +453,25 @@ def simulate_events(parent_name: str,
             rng,
             M2_max,
             event_index=i,
-            warmup_events=warmup_events if use_accept_reject else -1,
-            run_timestamp=run_timestamp
+            use_accept_reject=use_accept_reject,   # NEW
+            warmup_events=warmup_events,
+            run_timestamp=run_timestamp,
+            ar_inflate=ar_inflate
         )
-        
-        if result is not None:
-            event_row, final_state_rows = result
-            
-            # Optional: filter neutrinos
+
+        if status == "ACCEPTED":
+            event_row, final_state_rows = payload
             if not store_neutrinos:
-                final_state_rows = [
-                    fs for fs in final_state_rows 
-                    if "nu" not in fs[0].lower()
-                ]
-            
+                # NOTE: Removing neutrinos breaks stored momentum conservation.
+                # Stored events will not satisfy ∑p = 0. Use full final_states for physics validation.
+                final_state_rows = [fs for fs in final_state_rows if "nu" not in fs[0].lower()]
             events_out.append(event_row)
             final_states_out.append(final_state_rows)
             success += 1
+        elif status == "WARMUP":
+            pass  # not counted
+        elif status == "REJECTED":
+            rejected += 1
         else:
             failed += 1
         
@@ -453,6 +493,11 @@ def simulate_events(parent_name: str,
         _flush_batch(events_out, final_states_out)
         store_time = (datetime.now() - start_store).total_seconds()
         print(f"[STORE] ✓ Complete in {store_time:.2f}s")
+    
+    if use_accept_reject and M2_max:
+        print("\n[ACCEPT–REJECT] Learned M² maxima:")
+        for k, v in M2_max.items():
+            print(f"  {k}: {v:.3e}")
     
     return {
         "success": success,
