@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+.env
+.DS_Store
+colliderx_pg_dump_fixed.sql
+*.egg-info/
+dist/
+build/
+.pytest_cache/
