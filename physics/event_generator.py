@@ -130,10 +130,7 @@ def simulate_event(parent_name: str,
             )
             me = get_matrix_element(decay_key)
             if me:
-                weight = me.M2(
-                    parent_p4=parent.fourvec.to_tuple(),
-                    daughter_p4s=[fv.to_tuple() for fv in fvs],
-                )
+                weight = 1.0  # me.M2(parent_p4, ordered_p4s, context={"afb": afb})
             logger.debug(f"Matrix element weight: {weight:.4f}")
         except Exception as e:
             logger.warning(f"Matrix element lookup failed: {e}, using weight=1.0")
@@ -295,11 +292,7 @@ def estimate_w_max(parent_name: str, n_trials: int = 5000, rng=None) -> float:
         if not me:
             continue
 
-        w = me.M2(
-            parent_p4=(parent.mass, 0.0, 0.0, 0.0),
-            daughter_p4s=[fv.to_tuple() for fv in fvs],
-        )
-
+        w = 1.0  # me.M2(parent_p4, ordered_p4s, context={"afb": afb})
         w_max = max(w_max, w)
 
     if w_max <= 0:

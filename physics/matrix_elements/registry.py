@@ -9,7 +9,7 @@ No strings. No ambiguity. No magic.
 from .flat import FlatMatrixElement
 from .weak_va import WeakVAMatrixElement
 from .scalar_2body import ScalarTwoBodyMatrixElement
-
+from .ZTOLLMatrixElement import ZToLeptonsMatrixElement
 
 # Global registry: decay_key -> MatrixElement instance
 _REGISTRY: dict = {}
@@ -65,3 +65,15 @@ register(111, (22, 22), ScalarTwoBodyMatrixElement())
 # Higgs → γ γ (toy)
 # PDG: H = 25, γ = 22
 register(25, (22, 22), ScalarTwoBodyMatrixElement())
+
+# Z → e⁺e⁻
+# PDG: Z=23, e⁻=11, e⁺=-11
+register(23, (-11, 11), ZToLeptonsMatrixElement())
+
+# Z → μ⁺μ⁻
+# PDG: Z=23, μ⁻=13, μ⁺=-13
+register(23, (-13, 13), ZToLeptonsMatrixElement())
+
+# Z → τ⁺τ⁻
+# PDG: Z=23, τ⁻=15, τ⁺=-15
+register(23, (-15, 15), ZToLeptonsMatrixElement())

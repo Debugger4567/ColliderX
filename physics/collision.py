@@ -7,7 +7,8 @@ from .particles import Particle
 from .decay_selector import choose_decay_mode, get_decay_modes, get_decay_products
 from .phase_space import generate_three_body_decay
 from db import get_conn
-
+from .breit_wigner import sample_relativistic_bw  # NEW
+from scripts import z_afb
 
 def _conn():
     return get_conn()
@@ -19,11 +20,22 @@ _PDG_CACHE = {}
 
 
 def get_particle(name: str) -> dict:
-    """Cache particle properties (mass, name) to avoid repeated Particle() construction."""
+    """Cache particle properties (mass, width, name) to avoid repeated Particle() construction."""
     if name not in _PARTICLE_CACHE:
         p = Particle(name)
+        # Fetch width (MeV) from DB; default 0.0 if NULL
+        with _conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                'SELECT "Width Γ (MeV)" FROM particles '
+                'WHERE LOWER("Name")=LOWER(%s) OR LOWER("Symbol")=LOWER(%s) '
+                'LIMIT 1',
+                (name, name),
+            )
+            row = cur.fetchone()
+        width_mev = float(row[0]) if (row and row[0] is not None) else 0.0
         _PARTICLE_CACHE[name] = {
-            "mass": p.mass,
+            "mass": p.mass,      # MeV
+            "width": width_mev,  # MeV
             "name": p.name,
         }
     return _PARTICLE_CACHE[name]
@@ -166,7 +178,19 @@ def _is_kinematically_allowed(parent_mass: float, daughter_names: list[str]) -> 
     return parent_mass + 1e-9 >= sum(masses)
 
 
-def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], rng: np.random.Generator, apply_weights: bool = True, parent_pdg: int = 0):
+def random_unit_vector(rng: np.random.Generator) -> np.ndarray:
+    """Generate a random unit vector uniformly on the sphere."""
+    cos_theta = rng.uniform(-1, 1)
+    phi = rng.uniform(0, 2 * np.pi)
+    sin_theta = np.sqrt(1 - cos_theta**2)
+    return np.array([
+        sin_theta * np.cos(phi),
+        sin_theta * np.sin(phi),
+        cos_theta
+    ])
+
+
+def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], rng: np.random.Generator, apply_weights: bool = True, parent_pdg: int = 0, afb: float = 0.0):
     """
     Generate decay in rest frame. Returns (list of p4 tuples, total weight).
     
@@ -191,9 +215,6 @@ def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], r
     
     # General 2-body decay
     if N == 2:
-        # NOTE: No matrix element applied for 2-body decays yet.
-        # Angular / spin distributions are currently pure phase space.
-        # TODO: Add helicity amplitudes, polarization dependence, angular distributions.
         m1, m2 = masses
         if parent_mass <= 0 or parent_mass + 1e-9 < (m1 + m2):
             raise ValueError("Kinematically forbidden 2-body decay")
@@ -205,8 +226,12 @@ def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], r
         E1 = math.sqrt(m1**2 + p_star**2)
         E2 = math.sqrt(m2**2 + p_star**2)
 
-        d1 = p4(E1, 0.0, 0.0, +p_star)
-        d2 = p4(E2, 0.0, 0.0, -p_star)
+        # NEW: Random isotropic direction
+        direction = random_unit_vector(rng)
+        p_vec = p_star * direction
+
+        d1 = p4(E1, p_vec[0], p_vec[1], p_vec[2])
+        d2 = p4(E2, -p_vec[0], -p_vec[1], -p_vec[2])
         return [d1, d2], 1.0
 
     # General 3-body decay
@@ -223,7 +248,7 @@ def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], r
                 daughter_names, p4s_rest, parent_pdg
             )
             
-            M2 = me.M2(parent_p4, ordered_p4s, context=None)
+            M2 = me.M2(parent_p4, ordered_p4s, context={"afb": afb})
             total_weight = ps_weight * M2
         else:
             total_weight = ps_weight
@@ -245,7 +270,8 @@ def _simulate_event_inmemory(parent_name: str,
                              use_accept_reject: bool = False,      # NEW
                              warmup_events: int = 500,
                              run_timestamp: str = "",
-                             ar_inflate: float = 1.2):
+                             ar_inflate: float = 1.2,
+                             afb: float = 0.0):              # NEW PARAMETER
     """
     Generate one event. Supports warm-up (M² max learning) and accept–reject.
     Returns:
@@ -271,7 +297,7 @@ def _simulate_event_inmemory(parent_name: str,
     try:
         apply_weights_flag = False
         p4s_rest, ps_weight = _generate_decay_fourvectors(
-            parent_mass, daughters, rng, apply_weights=apply_weights_flag, parent_pdg=parent_pdg
+            parent_mass, daughters, rng, apply_weights=apply_weights_flag, parent_pdg=parent_pdg, afb=afb
         )
         assert not apply_weights_flag, "Phase-space weight must be applied exactly once (generator multiplies ps_weight * M2)."
     except Exception:
@@ -285,7 +311,7 @@ def _simulate_event_inmemory(parent_name: str,
 
     ordered_p4s = _reorder_daughters_for_matrix_element(daughters, p4s_rest, parent_pdg)
     me = get_matrix_element(decay_key)
-    M2 = float(me.M2(parent_p4, ordered_p4s, context=None))
+    M2 = float(me.M2(parent_p4, ordered_p4s, context={"afb": afb}))
 
     # ---------- Warm-up: learn M²_max, skip storage ----------
     # NOTE: Assumes stationary M² distribution (rest-frame parent).
@@ -386,17 +412,32 @@ def simulate_events(parent_name: str,
                     warmup_events: int = 500,
                     use_accept_reject: bool = False,
                     store_neutrinos: bool = False,
-                    ar_inflate: float = 1.2) -> dict:
+                    ar_inflate: float = 1.2,
+                    fixed_decay_mode: str | None = None,
+                    use_breit_wigner: bool = False,
+                    bw_window: float = 10.0,
+                    afb: float = 0.0              # NEW PARAMETER
+                    ) -> dict:
     """
     High-performance batch event generator: pure RAM generation → single DB dump.
     
     Args:
         use_accept_reject: Apply dynamic unweighting (False = weighted events, True = unweighted)
+        use_breit_wigner: Sample parent mass from Breit-Wigner (False = fixed mass)
         store_neutrinos: Include neutrinos in final_states (False for leaner output)
     
-    Philosophy: Generate weighted events first, optimize unweighting later.
-    Note: accept-reject disabled by default (mathematically requires bounded M2).
+    Warning:
+        Accept-reject and Breit-Wigner cannot be used together (envelope becomes mass-dependent).
+        Use weighted events with Breit-Wigner enabled.
     """
+    # Critical: prevent invalid combination
+    if use_accept_reject and use_breit_wigner:
+        raise RuntimeError(
+            "Accept-reject cannot be used with Breit-Wigner mass smearing. "
+            "Use weighted events (use_accept_reject=False) or disable Breit-Wigner. "
+            "Reason: M² envelope depends on parent mass, which varies event-by-event."
+        )
+    
     if verbose:
         assert events <= 100, "Verbose mode only for debugging (≤100 events)"
     
@@ -406,20 +447,23 @@ def simulate_events(parent_name: str,
     # ========== PRE-RESOLUTION: Everything computed once ==========
     print(f"\n[SETUP] Resolving {parent_name}...")
     parent_info = get_particle(parent_name)
-    parent_mass = parent_info["mass"]
-    
+    parent_mass = parent_info["mass"]                 # MeV
+    parent_width = parent_info.get("width", 0.0)      # MeV
     parent_pdg = get_pdg_id_cached(parent_name)
     if parent_pdg is None:
         raise RuntimeError(f"Unknown particle: {parent_name}")
     
-    # Pre-fetch decay modes; bypass RNG if single channel
-    decay_modes = get_decay_modes(parent_pdg)
-    if len(decay_modes) == 1:
-        fixed_decay_mode = decay_modes[0][0]
-        print(f"[SETUP] Single decay mode: {fixed_decay_mode}")
+    # Pre-fetch decay modes; bypass RNG if single channel or forced
+    if fixed_decay_mode:
+        decay_modes = [(fixed_decay_mode, 1.0)]
+        print(f"[SETUP] Forced decay mode: {fixed_decay_mode}")
     else:
-        fixed_decay_mode = None
-        print(f"[SETUP] {len(decay_modes)} decay modes available")
+        decay_modes = get_decay_modes(parent_pdg)
+        if len(decay_modes) == 1:
+            fixed_decay_mode = decay_modes[0][0]
+            print(f"[SETUP] Single decay mode: {fixed_decay_mode}")
+        else:
+            print(f"[SETUP] {len(decay_modes)} decay modes available")
     
     # Timestamp once per run
     run_timestamp = datetime.utcnow().isoformat()
@@ -444,27 +488,39 @@ def simulate_events(parent_name: str,
     start_gen = datetime.now()
     
     for i in range(total):
+        # --- Event-by-event parent mass (MeV)
+        if use_breit_wigner and parent_width > 0:
+            m_min = max(0.0, parent_mass - bw_window * parent_width)
+            m_max = parent_mass + bw_window * parent_width
+            m_event = float(sample_relativistic_bw(
+                m0=parent_mass,
+                gamma=parent_width,
+                rng=rng,
+                m_min=m_min,
+                m_max=m_max,
+            ))
+        else:
+            m_event = parent_mass
+
+        # Pass afb to _simulate_event_inmemory via context
         status, payload = _simulate_event_inmemory(
-            parent_name, 
-            parent_mass,
+            parent_name,
+            m_event,
             parent_pdg,
             fixed_decay_mode,
-            event_weight, 
+            event_weight,
             rng,
             M2_max,
             event_index=i,
-            use_accept_reject=use_accept_reject,   # NEW
+            use_accept_reject=use_accept_reject,
             warmup_events=warmup_events,
             run_timestamp=run_timestamp,
-            ar_inflate=ar_inflate
+            ar_inflate=ar_inflate,
+            afb=afb  # NEW
         )
 
         if status == "ACCEPTED":
             event_row, final_state_rows = payload
-            if not store_neutrinos:
-                # NOTE: Removing neutrinos breaks stored momentum conservation.
-                # Stored events will not satisfy ∑p = 0. Use full final_states for physics validation.
-                final_state_rows = [fs for fs in final_state_rows if "nu" not in fs[0].lower()]
             events_out.append(event_row)
             final_states_out.append(final_state_rows)
             success += 1
