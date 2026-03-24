@@ -12,6 +12,11 @@ import numpy as np
 import warnings
 
 
+class _CallableFloat(float):
+    def __call__(self) -> float:
+        return float(self)
+
+
 # -----------------------------
 # FourVector
 # -----------------------------
@@ -37,23 +42,41 @@ class FourVector:
         return math.sqrt(max(m2, 0.0))
     
     @property
-    def mass(self) -> float:
-        """Alias for backward compatibility. Use invariant_mass instead."""
+    def mass(self) -> _CallableFloat:
+        """Backward-compatible mass accessor supporting both `v.mass` and `v.mass()`.
+
+        Prefer `invariant_mass` in new code.
+        """
         warnings.warn(
             "FourVector.mass is deprecated. Use invariant_mass instead.",
             DeprecationWarning,
             stacklevel=2
         )
-        return self.invariant_mass
+        return _CallableFloat(self.invariant_mass)
+
+    def momentum(self) -> float:
+        """Backward-compatible alias for 3-momentum magnitude."""
+        return self.magnitude
 
     def beta(self) -> np.ndarray:
         if self.E == 0.0:
             return np.zeros(3, dtype=float)
         return self.p / self.E
 
-    def boost(self, beta: np.ndarray) -> "FourVector":
+    def boost(self, *args) -> "FourVector":
+        """Boost by velocity beta.
+
+        Supports both:
+        - `boost(beta_array_like)`
+        - `boost(bx, by, bz)` (legacy)
+        """
         p4 = np.array([self.E, self.px, self.py, self.pz], dtype=float)
-        b = np.asarray(beta, dtype=float)
+        if len(args) == 1:
+            b = np.asarray(args[0], dtype=float)
+        elif len(args) == 3:
+            b = np.asarray([args[0], args[1], args[2]], dtype=float)
+        else:
+            raise TypeError("boost expects either (beta) or (bx, by, bz)")
         boosted = lorentz_boost_array(p4, b)
         return FourVector(float(boosted[0]), float(boosted[1]), float(boosted[2]), float(boosted[3]))
 

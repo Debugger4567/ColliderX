@@ -25,7 +25,7 @@ def load_muon_events():
             fs.px,
             fs.py,
             fs.pz,
-            e.event_weight
+            COALESCE(e.event_weight, e.weight, 1.0) AS event_weight
         FROM events e
         JOIN final_states fs ON fs.event_id = e.id
         WHERE e.parent = 'Muon'

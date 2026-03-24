@@ -1,22 +1,25 @@
-from physics.event_generator import simulate_event, estimate_w_max
-from physics.unweighting import UnweightingController
-import numpy as np
+from physics.collision import simulate_events
 
-rng = np.random.default_rng(42)
 
-wmax = estimate_w_max("Pion0", n_trials=2000, rng=rng)
-uw = UnweightingController(wmax)
-
-accepted = 0
-for _ in range(5000):
-    eid = simulate_event(
-        "Pion0",
-        rng=rng,
-        use_matrix_element=True,
-        unweighting_controller=uw
+def main() -> None:
+    result = simulate_events(
+        parent_name="Pion0",
+        n_events=5000,
+        seed=42,
+        use_accept_reject=True,
+        warmup_events=500,
+        verbose=False,
     )
-    if eid:
-        accepted += 1
 
-print("Accepted:", accepted)
-print("Efficiency:", uw.efficiency)
+    accepted = result["success"]
+    rejected = result["rejected"]
+    total_attempted = accepted + rejected
+    efficiency = (accepted / total_attempted) if total_attempted > 0 else 0.0
+
+    print("Accepted:", accepted)
+    print("Rejected:", rejected)
+    print("Efficiency:", efficiency)
+
+
+if __name__ == "__main__":
+    main()

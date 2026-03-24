@@ -3,7 +3,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from physics.particles import Particle
 from physics.decay_selector import get_decay_products
-from physics.event_generator import generate_decay_kinematics
+from physics.decays import decay_particle
+import numpy as np
 
 
 
@@ -16,10 +17,15 @@ def main():
 
     print("Decay mode: π0 →", daughters)
 
-    # Generate kinematics
-    final_particles = generate_decay_kinematics(pi0, daughters)
+    # Generate kinematics directly from decay kernel
+    daughter_particles = [Particle(name) for name in daughters]
+    daughter_masses = [particle.mass for particle in daughter_particles]
+    p4s = decay_particle(pi0.mass, daughter_masses, rng=np.random.default_rng())
 
-    p1, p2 = final_particles
+    for particle, four_vector in zip(daughter_particles, p4s):
+        particle.fourvec = four_vector
+
+    p1, p2 = daughter_particles
 
     # Invariant mass check
     inv_mass = (p1.fourvec + p2.fourvec).mass

@@ -17,7 +17,7 @@ def main():
 
     # Get mu- momenta only (define θ using ℓ⁻)
     cur.execute("""
-        SELECT fs.px, fs.py, fs.pz, e.event_weight
+        SELECT fs.px, fs.py, fs.pz, COALESCE(e.event_weight, e.weight, 1.0)
         FROM final_states fs
         JOIN events e ON fs.event_id = e.id
         WHERE e.parent = 'Z0'

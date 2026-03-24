@@ -3,12 +3,13 @@ import math
 import numpy as np
 from datetime import datetime
 from pathlib import Path
+
+from physics.spin import SpinState
 from .particles import Particle
 from .decay_selector import choose_decay_mode, get_decay_modes, get_decay_products
 from .phase_space import generate_three_body_decay
 from db import get_conn
 from .breit_wigner import sample_relativistic_bw  # NEW
-from scripts import z_afb
 
 def _conn():
     return get_conn()
@@ -87,26 +88,46 @@ def _reorder_daughters_for_matrix_element(
     
     # For 3-body leptonic decays, enforce V-A ordering
     if len(daughters) == 3:
-        charged_lepton_p4 = None
+        charged_minus_p4 = None
+        charged_plus_p4 = None
         antineutrino_p4 = None
         neutrino_p4 = None
         
         for pdg, p4, name in daughters:
             # Charged leptons: e-, mu-, tau- (PDG: 11, 13, 15)
             if pdg in [11, 13, 15]:
-                charged_lepton_p4 = p4
+                charged_minus_p4 = p4
             # Charged antileptons: e+, mu+, tau+ (PDG: -11, -13, -15)
             elif pdg in [-11, -13, -15]:
-                charged_lepton_p4 = p4
+                charged_plus_p4 = p4
             # Antineutrinos: nu_e_bar, nu_mu_bar, nu_tau_bar (PDG: -12, -14, -16)
             elif pdg in [-12, -14, -16]:
                 antineutrino_p4 = p4
             # Neutrinos: nu_e, nu_mu, nu_tau (PDG: 12, 14, 16)
             elif pdg in [12, 14, 16]:
                 neutrino_p4 = p4
-        
-        # If we identified all three components, return ordered
-        if charged_lepton_p4 and antineutrino_p4 and neutrino_p4:
+
+        # Parent particle (e.g. mu-, tau-) convention: [l-, nubar, nu]
+        if (
+            parent_pdg > 0
+            and charged_minus_p4 is not None
+            and antineutrino_p4 is not None
+            and neutrino_p4 is not None
+        ):
+            return [charged_minus_p4, antineutrino_p4, neutrino_p4]
+
+        # Parent antiparticle (e.g. mu+, tau+) convention: [l+, nu, nubar]
+        if (
+            parent_pdg < 0
+            and charged_plus_p4 is not None
+            and neutrino_p4 is not None
+            and antineutrino_p4 is not None
+        ):
+            return [charged_plus_p4, neutrino_p4, antineutrino_p4]
+
+        # Fallback for legacy or incomplete PDG metadata
+        charged_lepton_p4 = charged_minus_p4 if charged_minus_p4 is not None else charged_plus_p4
+        if charged_lepton_p4 is not None and antineutrino_p4 is not None and neutrino_p4 is not None:
             return [charged_lepton_p4, antineutrino_p4, neutrino_p4]
     
     # Fallback: return original order
@@ -374,14 +395,32 @@ def _flush_batch(event_rows, final_state_groups, batch_size: int = 5000):
             batch_final_states = final_state_groups[batch_start:batch_end]
             
             with _conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'events'
+                    """
+                )
+                event_columns = {row[0] for row in cur.fetchall()}
+                has_legacy_weight = "weight" in event_columns
+
+                if has_legacy_weight:
+                    insert_sql = (
+                        "INSERT INTO events(parent, decay_mode, energy, timestamp, event_weight, phase_space_weight, weight) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id"
+                    )
+                else:
+                    insert_sql = (
+                        "INSERT INTO events(parent, decay_mode, energy, timestamp, event_weight, phase_space_weight) "
+                        "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id"
+                    )
+
                 # Insert events and collect IDs
                 event_ids = []
                 for row in batch_events:
-                    cur.execute(
-                        "INSERT INTO events(parent, decay_mode, energy, timestamp, event_weight, phase_space_weight) "
-                        "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-                        row
-                    )
+                    event_row = (*row, row[4]) if has_legacy_weight else row
+                    cur.execute(insert_sql, event_row)
                     event_ids.append(cur.fetchone()[0])
                 
                 # Build final_states with correct FK linkage
@@ -403,6 +442,131 @@ def _flush_batch(event_rows, final_state_groups, batch_size: int = 5000):
         print(f"[ERROR] Batch flush failed: {e}")
 
 
+def _assign_daughter_spins(daughter_names: list, p4s: list, parent_pdg: int, rng: np.random.Generator, parent_p4: tuple = (0.0, 0.0, 0.0, 0.0),afb: float = 0.0,) -> list:
+    """
+    Assign SpinState to each daughter based on parent decay.
+    """
+    from .helicity import compute_tau_helicity
+
+    TAU_PDGS = {15, -15}
+    spins = []
+
+    for name, p4 in zip(daughter_names, p4s):
+        pdg = get_pdg_id_cached(name)
+
+        if pdg in TAU_PDGS and parent_pdg == 23:
+            spin = compute_tau_helicity(tau_p4=p4, parent_p4=parent_p4, rng=rng, afb=afb)
+
+            if pdg == -15:
+                spin = SpinState(helicity=-spin.helicity, quantization_axis=spin.quantization_axis)
+        else:
+            spin = SpinState.unpolarized()
+
+        spins.append(spin)
+
+    return spins
+
+
+def _decay_particle_recursive(
+    particle_name: str,
+    p4: tuple,
+    spin: "SpinState | None",
+    rng: np.random.Generator,
+    depth: int = 0,
+    max_depth: int = 4,
+    afb: float = 0.0,
+) -> list:
+    from .spin import SpinState
+    from .matrix_elements import get_matrix_element
+
+    STABLE = {
+        "Electron", "Positron", "Photon", "Proton", "Antiproton",
+        "Electron neutrino", "Electron antineutrino",
+        "Muon neutrino", "Muon antineutrino",
+        "Tau neutrino", "Tau antineutrino",
+        "Gluon",
+    }
+
+    if particle_name in STABLE or depth >= max_depth:
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    pdg = get_pdg_id_cached(particle_name)
+    if pdg is None:
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    modes = get_decay_modes(pdg)
+    if not modes:
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    decay_mode = choose_decay_mode(pdg, rng)
+    if decay_mode == "stable":
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    try:
+        daughters = get_decay_products(pdg, decay_mode)
+    except Exception:
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    if not _is_kinematically_allowed(get_particle(particle_name)["mass"], daughters):
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    parent_mass = get_particle(particle_name)["mass"]
+    daughter_pdgs = tuple(sorted([get_pdg_id_cached(n) or 0 for n in daughters]))
+    decay_key = (pdg, daughter_pdgs)
+
+    if spin is None:
+        spin = SpinState.unpolarized()
+
+    try:
+        p4s, ps_weight = _generate_decay_fourvectors(
+            parent_mass,
+            daughters,
+            rng,
+            apply_weights=False,
+            parent_pdg=pdg,
+            afb=afb,
+        )
+    except Exception:
+        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+    me = get_matrix_element(decay_key)
+    ordered = _reorder_daughters_for_matrix_element(daughters, p4s, pdg)
+    context = {"spin_state": spin, "afb": afb}
+    M2 = float(me.M2((parent_mass, 0.0, 0.0, 0.0), ordered, context))
+    _ = (M2, ps_weight)
+
+    daughter_spins = _assign_daughter_spins(
+        daughters,
+        p4s,
+        pdg,
+        rng,
+        parent_p4=(parent_mass, 0.0, 0.0, 0.0),
+        afb=afb,
+    )
+
+    E_par, px_par, py_par, pz_par = p4
+    beta = np.array([px_par, py_par, pz_par]) / E_par if E_par > 0 else np.zeros(3)
+    beta_mag_sq = float(np.dot(beta, beta))
+
+    boosted_p4s = []
+    for fv in p4s:
+        if beta_mag_sq > 1e-18:
+            from .kinematics import FourVector
+            bfv = FourVector(*fv).boost(beta)
+            boosted_p4s.append((bfv.E, bfv.px, bfv.py, bfv.pz))
+        else:
+            boosted_p4s.append(fv)
+
+    final_states = []
+    for name, bp4, dspin in zip(daughters, boosted_p4s, daughter_spins):
+        children = _decay_particle_recursive(
+            name, bp4, dspin, rng, depth + 1, max_depth, afb=afb
+        )
+        final_states.extend(children)
+
+    return final_states
+
+
 def simulate_events(parent_name: str,
                     events: int = 10,
                     n_events: int | None = None,
@@ -416,44 +580,31 @@ def simulate_events(parent_name: str,
                     fixed_decay_mode: str | None = None,
                     use_breit_wigner: bool = False,
                     bw_window: float = 10.0,
-                    afb: float = 0.0              # NEW PARAMETER
-                    ) -> dict:
+                    afb: float = 0.0) -> dict:
     """
     High-performance batch event generator: pure RAM generation → single DB dump.
-    
-    Args:
-        use_accept_reject: Apply dynamic unweighting (False = weighted events, True = unweighted)
-        use_breit_wigner: Sample parent mass from Breit-Wigner (False = fixed mass)
-        store_neutrinos: Include neutrinos in final_states (False for leaner output)
-    
-    Warning:
-        Accept-reject and Breit-Wigner cannot be used together (envelope becomes mass-dependent).
-        Use weighted events with Breit-Wigner enabled.
     """
-    # Critical: prevent invalid combination
     if use_accept_reject and use_breit_wigner:
         raise RuntimeError(
             "Accept-reject cannot be used with Breit-Wigner mass smearing. "
             "Use weighted events (use_accept_reject=False) or disable Breit-Wigner. "
             "Reason: M² envelope depends on parent mass, which varies event-by-event."
         )
-    
+
     if verbose:
         assert events <= 100, "Verbose mode only for debugging (≤100 events)"
-    
+
     total = n_events if n_events is not None else events
     rng = np.random.default_rng(seed)
-    
-    # ========== PRE-RESOLUTION: Everything computed once ==========
+
     print(f"\n[SETUP] Resolving {parent_name}...")
     parent_info = get_particle(parent_name)
-    parent_mass = parent_info["mass"]                 # MeV
-    parent_width = parent_info.get("width", 0.0)      # MeV
+    parent_mass = parent_info["mass"]
+    parent_width = parent_info.get("width", 0.0)
     parent_pdg = get_pdg_id_cached(parent_name)
     if parent_pdg is None:
         raise RuntimeError(f"Unknown particle: {parent_name}")
-    
-    # Pre-fetch decay modes; bypass RNG if single channel or forced
+
     if fixed_decay_mode:
         decay_modes = [(fixed_decay_mode, 1.0)]
         print(f"[SETUP] Forced decay mode: {fixed_decay_mode}")
@@ -464,31 +615,24 @@ def simulate_events(parent_name: str,
             print(f"[SETUP] Single decay mode: {fixed_decay_mode}")
         else:
             print(f"[SETUP] {len(decay_modes)} decay modes available")
-    
-    # Timestamp once per run
+
     run_timestamp = datetime.utcnow().isoformat()
-    
+
     success = 0
     failed = 0
     rejected = 0
-    
-    # All events collected in RAM (NO DB access during generation)
+
     events_out = []
     final_states_out = []
-    
-    # Track max M² per decay mode
     M2_max = {}
-    
-    # Progress
+
     show_progress = total > 100
     last_progress = 0
-    
-    # ========== GENERATION PHASE (RAM ONLY) ==========
+
     print(f"[GEN] Generating {total} events for {parent_name}...")
     start_gen = datetime.now()
-    
+
     for i in range(total):
-        # --- Event-by-event parent mass (MeV)
         if use_breit_wigner and parent_width > 0:
             m_min = max(0.0, parent_mass - bw_window * parent_width)
             m_max = parent_mass + bw_window * parent_width
@@ -502,7 +646,6 @@ def simulate_events(parent_name: str,
         else:
             m_event = parent_mass
 
-        # Pass afb to _simulate_event_inmemory via context
         status, payload = _simulate_event_inmemory(
             parent_name,
             m_event,
@@ -516,7 +659,7 @@ def simulate_events(parent_name: str,
             warmup_events=warmup_events,
             run_timestamp=run_timestamp,
             ar_inflate=ar_inflate,
-            afb=afb  # NEW
+            afb=afb,
         )
 
         if status == "ACCEPTED":
@@ -525,23 +668,21 @@ def simulate_events(parent_name: str,
             final_states_out.append(final_state_rows)
             success += 1
         elif status == "WARMUP":
-            pass  # not counted
+            pass
         elif status == "REJECTED":
             rejected += 1
         else:
             failed += 1
-        
-        # Progress
+
         if show_progress:
             progress_pct = (i + 1) / total
             if progress_pct - last_progress >= 0.05:
                 print(f"[GEN] {i+1:6d}/{total} ({progress_pct*100:5.1f}%) | Success: {success:6d}")
                 last_progress = progress_pct
-    
+
     gen_time = (datetime.now() - start_gen).total_seconds()
     print(f"[GEN] ✓ Complete: {success} events in {gen_time:.2f}s ({success/gen_time:.0f} evt/sec)")
-    
-    # ========== PERSISTENCE PHASE (ONE TRANSACTION) ==========
+
     store_time = 0.0
     if events_out:
         print(f"\n[STORE] Writing {success} events + {sum(len(fs) for fs in final_states_out)} particles...")
@@ -549,12 +690,12 @@ def simulate_events(parent_name: str,
         _flush_batch(events_out, final_states_out)
         store_time = (datetime.now() - start_store).total_seconds()
         print(f"[STORE] ✓ Complete in {store_time:.2f}s")
-    
+
     if use_accept_reject and M2_max:
         print("\n[ACCEPT–REJECT] Learned M² maxima:")
         for k, v in M2_max.items():
             print(f"  {k}: {v:.3e}")
-    
+
     return {
         "success": success,
         "failed": failed,
@@ -564,3 +705,101 @@ def simulate_events(parent_name: str,
         "store_time": store_time,
         "run_timestamp": run_timestamp,
     }
+
+
+
+
+def simulate_chain(
+    parent_name: str,
+    n_events: int = 1000,
+    seed: int | None = None,
+    afb: float = 0.0,
+    fixed_decay_mode: str | None = None,
+    verbose: bool = False,
+) -> dict:
+    rng = np.random.default_rng(seed)
+    run_timestamp = datetime.utcnow().isoformat()
+
+    parent_info = get_particle(parent_name)
+    parent_mass = parent_info["mass"]
+    parent_pdg = get_pdg_id_cached(parent_name)
+
+    if parent_pdg is None:
+        raise RuntimeError(f"Unknown particle: {parent_name}")
+
+    if fixed_decay_mode:
+        _modes = [(fixed_decay_mode, 1.0)]
+    else:
+        modes = get_decay_modes(parent_pdg)
+        if len(modes) == 1:
+            fixed_decay_mode = modes[0][0]
+
+    events_out = []
+    final_states_out = []
+    success = 0
+    failed = 0
+
+    start = datetime.now()
+    parent_spin = SpinState.unpolarized()
+
+    for i in range(n_events):
+        parent_p4 = (parent_mass, 0.0, 0.0, 0.0)
+
+        try:
+            final_states = _decay_particle_recursive(
+                particle_name=parent_name,
+                p4=parent_p4,
+                spin=parent_spin,
+                rng=rng,
+                depth=0,
+                max_depth=4,
+                afb=afb,
+            )
+        except Exception as e:
+            if verbose:
+                print(f"[CHAIN] Event {i} failed: {e}")
+            failed += 1
+            continue
+
+        if not final_states:
+            failed += 1
+            continue
+
+        decay_mode = fixed_decay_mode or "chain"
+        event_row = (parent_name, decay_mode, parent_mass, run_timestamp, 1.0, 1.0)
+
+        fs_rows = [
+            (fs["name"], float(fs["p4"][1]), float(fs["p4"][2]), float(fs["p4"][3]), float(fs["p4"][0]))
+            for fs in final_states
+        ]
+
+        events_out.append(event_row)
+        final_states_out.append(fs_rows)
+        success += 1
+
+        if verbose and (i + 1) % 100 == 0:
+            print(f"[CHAIN] {i+1}/{n_events} | success: {success}")
+
+    gen_time = (datetime.now() - start).total_seconds()
+
+    store_time = 0.0
+    if events_out:
+        start_store = datetime.now()
+        _flush_batch(events_out, final_states_out)
+        store_time = (datetime.now() - start_store).total_seconds()
+
+    rate = (success / gen_time) if gen_time > 0 else 0.0
+    print(
+        f"[CHAIN] Done: {success}/{n_events} in {gen_time:.2f}s "
+        f"({rate:.0f} evt/sec) | store: {store_time:.2f}s"
+    )
+
+    return {
+        "success": success,
+        "failed": failed,
+        "total": n_events,
+        "gen_time": gen_time,
+        "store_time": store_time,
+        "run_timestamp": run_timestamp,
+    }
+

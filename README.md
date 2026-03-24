@@ -73,6 +73,18 @@ db.py + schema/schema.sql (Persistence Layer)
 #### Design Principle
 > **The database is the source of truth for all physics properties. No hardcoded masses.**
 
+#### Event Weight Contract
+
+- `event_weight`: canonical per-event analysis weight (use this in plots/fits).
+- `phase_space_weight`: pure phase-space Jacobian component, stored for diagnostics.
+- `weight`: legacy compatibility column; when present, it mirrors `event_weight`.
+
+For backward-compatible SQL in mixed schemas, use:
+
+```sql
+COALESCE(events.event_weight, events.weight, 1.0)
+```
+
 ```python
 # ❌ Bad: Hardcoded physics
 muon_mass = 105.658  # MeV

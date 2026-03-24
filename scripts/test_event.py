@@ -1,5 +1,12 @@
-from physics.collision import init_event_db, simulate_event
+from physics.collision import simulate_events
 
-init_event_db()
-eid = simulate_event("Higgs", n_bodies=2)
-print("Event stored with ID:", eid)
+def main():
+    result = simulate_events(
+        parent_name="Higgs",
+        n_events=1,
+        seed=42,
+    )
+    print(result)
+
+if __name__ == "__main__":
+    main()

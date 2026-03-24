@@ -10,6 +10,7 @@ from .flat import FlatMatrixElement
 from .weak_va import WeakVAMatrixElement
 from .scalar_2body import ScalarTwoBodyMatrixElement
 from .ZTOLLMatrixElement import ZToLeptonsMatrixElement
+from .tau_helicity import TauPionHelicityMatrixElement
 
 # Global registry: decay_key -> MatrixElement instance
 _REGISTRY: dict = {}
@@ -77,3 +78,11 @@ register(23, (-13, 13), ZToLeptonsMatrixElement())
 # Z → τ⁺τ⁻
 # PDG: Z=23, τ⁻=15, τ⁺=-15
 register(23, (-15, 15), ZToLeptonsMatrixElement())
+
+# τ⁻ → π⁻ ντ  
+# (PDG: τ⁻=15, π⁻=-211, ντ=16)
+register(15, (-211, 16), TauPionHelicityMatrixElement())
+
+# τ⁺ → π⁺ ν̄τ  
+# (PDG: τ⁺=-15, π⁺=211, ν̄τ=-16)
+register(-15, (-16, 211), TauPionHelicityMatrixElement())

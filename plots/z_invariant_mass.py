@@ -24,7 +24,7 @@ def main():
             fs.py,
             fs.pz,
             fs.e AS e_fs,
-            e.event_weight
+            COALESCE(e.event_weight, e.weight, 1.0) AS event_weight
         FROM final_states fs
         JOIN events e ON fs.event_id = e.id
         WHERE e.parent = 'Z0'

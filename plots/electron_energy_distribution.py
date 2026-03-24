@@ -6,7 +6,7 @@ conn = psycopg2.connect("dbname=colliderx user=postgres password=Soccer@21")
 cur = conn.cursor()
 
 cur.execute("""
-SELECT fs.E, ev.event_weight
+SELECT fs.E, COALESCE(ev.event_weight, ev.weight, 1.0) AS event_weight
 FROM final_states fs
 JOIN events ev ON fs.event_id = ev.id
 WHERE fs.particle = 'Electron';

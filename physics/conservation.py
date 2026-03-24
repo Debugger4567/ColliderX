@@ -159,7 +159,7 @@ def two_body_decay(parent: FourVector, m1: float, m2: float):
     (suitable for tests), then boosting to lab frame if parent moves.
     """
     import math
-    M2 = parent.E**2 - parent.momentum()**2
+    M2 = parent.E**2 - parent.magnitude**2
     M = math.sqrt(M2) if M2 > 0 else 0.0
     if m1 + m2 > M + 1e-9:
         raise ValueError("Kinematically forbidden decay: m1+m2 > parent mass")
@@ -175,12 +175,13 @@ def two_body_decay(parent: FourVector, m1: float, m2: float):
         E2 = math.sqrt(m2**2 + p_star**2)
     d1_rf = FourVector(E1, 0.0, 0.0, p_star)
     d2_rf = FourVector(E2, 0.0, 0.0, -p_star)
-    if parent.momentum() < 1e-12:  # parent at rest
+    if parent.magnitude < 1e-12:  # parent at rest
         return d1_rf, d2_rf
     # boost components
     bx = parent.px / parent.E
     by = parent.py / parent.E
     bz = parent.pz / parent.E
-    d1_lab = d1_rf.boost(bx, by, bz)
-    d2_lab = d2_rf.boost(bx, by, bz)
+    beta = [bx, by, bz]
+    d1_lab = d1_rf.boost(beta)
+    d2_lab = d2_rf.boost(beta)
     return d1_lab, d2_lab
