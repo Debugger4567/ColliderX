@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class MatrixElement(ABC):
     """
     Base class for all matrix elements.
@@ -13,10 +14,7 @@ class MatrixElement(ABC):
 
     @abstractmethod
     def M2(
-        self, 
-        parent_p4: tuple,
-        daughter_p4s: list[tuple],
-        context: dict | None = None
+        self, parent_p4: tuple, daughter_p4s: list[tuple], context: dict | None = None
     ) -> float:
         """
         Return |M|^2 for the given momenta.

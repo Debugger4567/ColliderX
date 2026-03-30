@@ -1,5 +1,6 @@
 from db import get_conn
 
+
 def add_decays():
     conn = get_conn()
     cur = conn.cursor()
@@ -12,11 +13,10 @@ def add_decays():
             ("W+ W−", 21.5),
             ("Z0 Z0", 2.6),
             ("τ+ τ−", 6.3),
-            ("γ γ", 0.23),       # famous diphoton decay
+            ("γ γ", 0.23),  # famous diphoton decay
             ("gg", 8.5),
             ("μ+ μ−", 0.022),
         ],
-
         # Z boson (Z0, 23)
         23: [
             ("e+ e−", 3.37),
@@ -27,7 +27,6 @@ def add_decays():
             ("ντ ν̄τ", 6.7),
             ("qq̄", 69.9),  # hadronic decays
         ],
-
         # W+ boson (24)
         24: [
             ("e+ νe", 10.7),
@@ -35,7 +34,6 @@ def add_decays():
             ("τ+ ντ", 11.3),
             ("qq̄'", 67.4),
         ],
-
         # W− boson (-24)
         -24: [
             ("e− ν̄e", 10.7),
@@ -59,6 +57,7 @@ def add_decays():
     conn.commit()
     conn.close()
     print("✅ New decays added successfully!")
+
 
 if __name__ == "__main__":
     add_decays()

@@ -1,8 +1,9 @@
 from .base import MatrixElement
 
+
 class FlatMatrixElement(MatrixElement):
     """Uniform phase space (no dynamics)."""
-    
+
     name = "Flat Phase Space"
     description = "Returns |M|^2 = 1.0 for all configurations"
 

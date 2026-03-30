@@ -7,13 +7,15 @@ Quantization axis = particle momentum in the PARENT rest frame.
 This is the only place in the codebase where helicity
 is assigned. Everything downstream just reads SpinState.
 """
-import math 
+
+import math
 import numpy as np
 from .spin import SpinState
 
+
 def _boost_to_rest_frame(p4_to_boost: tuple, parent_p4: tuple) -> np.ndarray:
     """
-    boost p4_to_boost into parent rest frame. 
+    boost p4_to_boost into parent rest frame.
     returns boosted spatail 3-momentum.
     """
     E_par, px_par, py_par, pz_par = parent_p4
@@ -35,8 +37,7 @@ def _boost_to_rest_frame(p4_to_boost: tuple, parent_p4: tuple) -> np.ndarray:
     E_in, px_in, py_in, pz_in = p4_to_boost
     p_in = np.array([px_in, py_in, pz_in], dtype=float)
 
-
-    #Boost into parent rest frame 
+    # Boost into parent rest frame
     # Boost into parent rest frame => use -beta
     neg_beta = -beta
     bp = float(np.dot(neg_beta, p_in))
@@ -44,24 +45,25 @@ def _boost_to_rest_frame(p4_to_boost: tuple, parent_p4: tuple) -> np.ndarray:
     return p_out
 
 
-def compute_tau_helicity(tau_p4: tuple, parent_p4: tuple, rng: np.random.Generator, afb: float = 0.0) -> SpinState:
+def compute_tau_helicity(
+    tau_p4: tuple, parent_p4: tuple, rng: np.random.Generator, afb: float = 0.0
+) -> SpinState:
     """
     Compute helicity of a tau produced in Z → τ⁺τ⁻.
     """
 
     p_tau_rf = _boost_to_rest_frame(tau_p4, parent_p4)
     p_mag = float(np.linalg.norm(p_tau_rf))
-    
+
     if p_mag < 1e-10:
-        return SpinState.unpolarized()  
-    
+        return SpinState.unpolarized()
+
     # Quantization axis = tau direction in Z rest frame
     # (approximately = lab frame direction for high-E Z)
     axis = p_tau_rf / p_mag
 
     # cos of tau angle w.r.t. beam (z) axis
     cos_theta = float(np.clip(p_tau_rf[2] / p_mag, -1.0, 1.0))
-
 
     # Z-pole inspired tau polarization model:
     #   P_tau(c) = - [ A_tau(1+c^2) + 2 A_e c ] / [ (1+c^2) + 2 A_e A_tau c ]
@@ -86,7 +88,6 @@ def compute_tau_helicity(tau_p4: tuple, parent_p4: tuple, rng: np.random.Generat
     return SpinState(helicity=helicity, quantization_axis=axis)
 
 
-def assign_unpolarized()  -> SpinState:
+def assign_unpolarized() -> SpinState:
     """Explicit unpolarixed - used for Phase B regession test"""
     return SpinState.unpolarized()
-        

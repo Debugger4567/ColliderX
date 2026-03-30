@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class UnweightingController:
     def __init__(self, w_max: float, safety_factor: float = 1.2):
         self.w_max = w_max * safety_factor

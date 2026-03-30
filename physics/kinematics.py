@@ -40,7 +40,7 @@ class FourVector:
         """Lorentz-invariant mass of the four-vector."""
         m2 = self.E * self.E - self.magnitude * self.magnitude
         return math.sqrt(max(m2, 0.0))
-    
+
     @property
     def mass(self) -> _CallableFloat:
         """Backward-compatible mass accessor supporting both `v.mass` and `v.mass()`.
@@ -50,7 +50,7 @@ class FourVector:
         warnings.warn(
             "FourVector.mass is deprecated. Use invariant_mass instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         return _CallableFloat(self.invariant_mass)
 
@@ -78,13 +78,19 @@ class FourVector:
         else:
             raise TypeError("boost expects either (beta) or (bx, by, bz)")
         boosted = lorentz_boost_array(p4, b)
-        return FourVector(float(boosted[0]), float(boosted[1]), float(boosted[2]), float(boosted[3]))
+        return FourVector(
+            float(boosted[0]), float(boosted[1]), float(boosted[2]), float(boosted[3])
+        )
 
     def __add__(self, other: "FourVector") -> "FourVector":
-        return FourVector(self.E + other.E, self.px + other.px, self.py + other.py, self.pz + other.pz)
+        return FourVector(
+            self.E + other.E, self.px + other.px, self.py + other.py, self.pz + other.pz
+        )
 
     def __sub__(self, other: "FourVector") -> "FourVector":
-        return FourVector(self.E - other.E, self.px - other.px, self.py - other.py, self.pz - other.pz)
+        return FourVector(
+            self.E - other.E, self.px - other.px, self.py - other.py, self.pz - other.pz
+        )
 
     def to_tuple(self) -> tuple:
         """Convert to (E, px, py, pz) for matrix element interface."""
@@ -127,10 +133,16 @@ def isotropic_direction(rng: Optional[np.random.Generator] = None) -> np.ndarray
 # -----------------------------
 # Two-body decay
 # -----------------------------
-def generate_two_body_decay(parent_mass: float,
-                            daughter_masses: Tuple[float, float],
-                            rng: Optional[np.random.Generator] = None) -> List[FourVector]:
-    warnings.warn("generate_two_body_decay is deprecated. Use phase_space.generate_n_body_decay instead.", DeprecationWarning, stacklevel=2)
+def generate_two_body_decay(
+    parent_mass: float,
+    daughter_masses: Tuple[float, float],
+    rng: Optional[np.random.Generator] = None,
+) -> List[FourVector]:
+    warnings.warn(
+        "generate_two_body_decay is deprecated. Use phase_space.generate_n_body_decay instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     rng = rng or np.random.default_rng()
     m0 = float(parent_mass)
     m1, m2 = map(float, daughter_masses)
@@ -154,17 +166,23 @@ def generate_two_body_decay(parent_mass: float,
 
     return [
         FourVector(E1, float(p1[0]), float(p1[1]), float(p1[2])),
-        FourVector(E2, float(p2[0]), float(p2[1]), float(p2[2]))
+        FourVector(E2, float(p2[0]), float(p2[1]), float(p2[2])),
     ]
 
 
 # -----------------------------
 # Three-body decay (phase space)
 # -----------------------------
-def generate_three_body_decay(parent_mass: float,
-                              daughter_masses: Tuple[float, float, float],
-                              rng: Optional[np.random.Generator] = None) -> List[FourVector]:
-    warnings.warn("generate_three_body_decay is deprecated. Use phase_space.generate_n_body_decay instead.", DeprecationWarning, stacklevel=2)
+def generate_three_body_decay(
+    parent_mass: float,
+    daughter_masses: Tuple[float, float, float],
+    rng: Optional[np.random.Generator] = None,
+) -> List[FourVector]:
+    warnings.warn(
+        "generate_three_body_decay is deprecated. Use phase_space.generate_n_body_decay instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     rng = rng or np.random.default_rng()
     m0 = float(parent_mass)
     m1, m2, m3 = map(float, daughter_masses)

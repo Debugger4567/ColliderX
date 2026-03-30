@@ -14,8 +14,8 @@ Add new tests here as features expand (multi-body phase space, random orientatio
 
 import math
 import pytest
-from .kinematics import FourVector
-from .conservation import (
+from physics.kinematics import FourVector
+from physics.conservation import (
     check_energy_conservation,
     check_momentum_conservation,
     check_conservation,
@@ -68,11 +68,11 @@ def test_check_energy_momentum_dict_structure():
     p_in = [FourVector(10, 0, 0, 0)]
     p_out = [FourVector(4, 1, 0, 0), FourVector(6, -1, 0, 0)]
     diag = check_energy_momentum(p_in, p_out)
-    assert diag['conserved'] is True
-    for key in ['deltaE', 'deltaPx', 'deltaPy', 'deltaPz', 'E_initial', 'E_final']:
+    assert diag["conserved"] is True
+    for key in ["deltaE", "deltaPx", "deltaPy", "deltaPz", "E_initial", "E_final"]:
         assert key in diag
-    _assert_close(diag['deltaE'], 0.0)
-    _assert_close(diag['deltaPx'], 0.0)
+    _assert_close(diag["deltaE"], 0.0)
+    _assert_close(diag["deltaPx"], 0.0)
 
 
 # --------------------------- Two-Body Decays ------------------------------
@@ -96,7 +96,7 @@ def test_two_body_decay_rest_equal_masses_properties():
     _assert_close(d1.E, d2.E)
     _assert_close(d1.pz, -d2.pz)
     diag = check_energy_momentum([parent], [d1, d2])
-    assert diag['conserved']
+    assert diag["conserved"]
 
 
 def test_two_body_decay_threshold():
@@ -117,7 +117,7 @@ def test_two_body_decay_boosted_frame():
     parent = FourVector(1200.0, 0.0, 0.0, 600.0)
     d1, d2 = two_body_decay(parent, 100.0, 100.0)
     diag = check_energy_momentum([parent], [d1, d2])
-    assert diag['conserved']
+    assert diag["conserved"]
 
 
 def test_two_body_decay_formula_match():
@@ -125,7 +125,9 @@ def test_two_body_decay_formula_match():
     m1, m2 = 200.0, 300.0
     d1, d2 = two_body_decay(parent, m1, m2)
     M = parent.mass()
-    p_expected = math.sqrt(max((M**2 - (m1+m2)**2)*(M**2 - (m1-m2)**2), 0.0)) / (2*M)
+    p_expected = math.sqrt(
+        max((M**2 - (m1 + m2) ** 2) * (M**2 - (m1 - m2) ** 2), 0.0)
+    ) / (2 * M)
     _assert_close(d1.momentum(), p_expected)
     _assert_close(d2.momentum(), p_expected)
 
@@ -155,7 +157,7 @@ def test_boost_consistency_direct_vs_manual():
     # Energies sum to parent energy & conservation holds
     _assert_close(d1_direct.E + d2_direct.E, parent_boosted.E)
     diag = check_energy_momentum([parent_boosted], [d1_direct, d2_direct])
-    assert diag['conserved']
+    assert diag["conserved"]
 
 
 # ------------------------- Precision / Tolerance --------------------------
@@ -181,7 +183,11 @@ def test_zero_vectors_conservation():
 def test_asymmetric_three_body_energy_only():
     # Ensure failure when only energy mismatched
     p_in = [FourVector(9.9, 0, 0, 0)]
-    p_out = [FourVector(3, 1, 0, 0), FourVector(3, -1, 0, 0), FourVector(4, 0, 0, 0)]  # 10 total
+    p_out = [
+        FourVector(3, 1, 0, 0),
+        FourVector(3, -1, 0, 0),
+        FourVector(4, 0, 0, 0),
+    ]  # 10 total
     assert not check_energy_conservation(p_in, p_out, tol=1e-6)
 
 
@@ -196,7 +202,7 @@ def test_two_body_decay_massless_daughter():
     parent = FourVector(500.0, 0, 0, 0)
     d1, d2 = two_body_decay(parent, 0.0, 100.0)
     diag = check_energy_momentum([parent], [d1, d2])
-    assert diag['conserved']
+    assert diag["conserved"]
 
 
 # ================= Particle + FourVector (DB-backed) Decays ==============
@@ -217,7 +223,9 @@ def _load_particles_from_db():
         return []
 
 
-@pytest.mark.skipif(False, reason="placeholder marker - set condition to skip if needed")
+@pytest.mark.skipif(
+    False, reason="placeholder marker - set condition to skip if needed"
+)
 def test_particle_db_mass_lookup_and_decay_conservation():
     """Dynamically pick a valid parent and two lighter daughters from DB and test decay conservation.
 
@@ -229,12 +237,14 @@ def test_particle_db_mass_lookup_and_decay_conservation():
     # Sort by mass ascending
     parts_sorted = sorted(parts, key=lambda x: x[2])
     # Attempt to find triple M_parent > m1 + m2
-    parent = None; d1 = None; d2 = None
-    for i in range(len(parts_sorted)-1, -1, -1):  # heavy to light
+    parent = None
+    d1 = None
+    d2 = None
+    for i in range(len(parts_sorted) - 1, -1, -1):  # heavy to light
         Mname, Msym, M = parts_sorted[i]
         # try pairs of lighter
         for j in range(len(parts_sorted)):
-            for k in range(j+1, len(parts_sorted)):
+            for k in range(j + 1, len(parts_sorted)):
                 n1, s1, m1 = parts_sorted[j]
                 n2, s2, m2 = parts_sorted[k]
                 if m1 + m2 < M and m1 > 0 and m2 > 0:
@@ -252,16 +262,20 @@ def test_particle_db_mass_lookup_and_decay_conservation():
     parent_vec = FourVector(parent[1], 0, 0, 0)
     dv1, dv2 = two_body_decay(parent_vec, d1[1], d2[1])
     diag = check_energy_momentum([parent_vec], [dv1, dv2])
-    assert diag['conserved'], f"Conservation failed for {parent[0]} -> {d1[0]} {d2[0]}: {diag}"
+    assert diag[
+        "conserved"
+    ], f"Conservation failed for {parent[0]} -> {d1[0]} {d2[0]}: {diag}"
     # Daughter invariant masses should approximate input masses
     # Allow a relative tolerance of 5e-6 or absolute 5e-6 to accommodate DB rounding
     rel_tol = 5e-6
     abs_tol = 5e-6
-    _assert_close(dv1.mass(), d1[1], tol=max(abs_tol, d1[1]*rel_tol))
-    _assert_close(dv2.mass(), d2[1], tol=max(abs_tol, d2[1]*rel_tol))
+    _assert_close(dv1.mass(), d1[1], tol=max(abs_tol, d1[1] * rel_tol))
+    _assert_close(dv2.mass(), d2[1], tol=max(abs_tol, d2[1] * rel_tol))
 
 
-@pytest.mark.skipif(False, reason="placeholder marker - set condition to skip if needed")
+@pytest.mark.skipif(
+    False, reason="placeholder marker - set condition to skip if needed"
+)
 def test_particle_db_forbidden_decay_raises():
     parts = _load_particles_from_db()
     if len(parts) < 3:
@@ -278,7 +292,9 @@ def test_particle_db_forbidden_decay_raises():
         two_body_decay(parent_vec, heavy1[2], heavy2[2])
 
 
-@pytest.mark.skipif(False, reason="placeholder marker - set condition to skip if needed")
+@pytest.mark.skipif(
+    False, reason="placeholder marker - set condition to skip if needed"
+)
 def test_particle_db_threshold_decay_if_available():
     parts = _load_particles_from_db()
     if len(parts) < 3:

@@ -3,8 +3,10 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from db import get_conn
 
+
 def get_db_connection():
     return get_conn()
+
 
 def main():
     conn = get_conn()
@@ -43,7 +45,7 @@ def main():
         p_tot = evt["p4"][0] + evt["p4"][1]
         w_evt = evt["w"]
         E, px, py, pz = p_tot
-        m2 = E*E - px*px - py*py - pz*pz
+        m2 = E * E - px * px - py * py - pz * pz
         if m2 > 0:
             masses.append(np.sqrt(m2) / 1000.0)  # MeV → GeV
             weights.append(float(w_evt))
@@ -68,14 +70,14 @@ def main():
         bins=80,
         range=(65, 115),
         weights=weights,
-        density=False,     # Match fit units
+        density=False,  # Match fit units
         alpha=0.8,
-        label="Simulation"
+        label="Simulation",
     )
 
     def breit_wigner(m, M, Gamma, A):
         # CORRECT formula: A × (m² Γ) / [(m² - M²)² + (m Γ)²]
-        return A * (m*m * Gamma) / ((m*m - M*M)**2 + (m*Gamma)**2)
+        return A * (m * m * Gamma) / ((m * m - M * M) ** 2 + (m * Gamma) ** 2)
 
     centers = 0.5 * (edges[:-1] + edges[1:])
 
@@ -90,7 +92,7 @@ def main():
             centers[mask],
             hist[mask],
             p0=p0,
-            bounds=([80, 0.0, 0], [100, 10.0, np.inf])  # Constrain Γ ≥ 0
+            bounds=([80, 0.0, 0], [100, 10.0, np.inf]),  # Constrain Γ ≥ 0
         )
         M_fit, Gamma_fit, A_fit = popt
 
@@ -99,8 +101,7 @@ def main():
 
         # Plot fit
         x = np.linspace(65, 115, 800)
-        plt.plot(x, breit_wigner(x, *popt),
-                 "r--", lw=2, label="Breit–Wigner fit")
+        plt.plot(x, breit_wigner(x, *popt), "r--", lw=2, label="Breit–Wigner fit")
     except RuntimeError as e:
         print(f"[WARN] Fit failed: {e}")
 
@@ -115,9 +116,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-

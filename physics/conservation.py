@@ -8,6 +8,7 @@
 from .kinematics import FourVector
 import math
 
+
 def check_energy_conservation(initial_vectors, final_vectors, tol=1e-6):
     """
     Check conservation of energy for any N-body interaction.
@@ -95,9 +96,9 @@ def check_momentum_conservation(initial_vectors, final_vectors, tol=1e-6):
     pz_final = sum(v.pz for v in final_vectors)
 
     return (
-        abs(px_initial - px_final) < tol and
-        abs(py_initial - py_final) < tol and
-        abs(pz_initial - pz_final) < tol
+        abs(px_initial - px_final) < tol
+        and abs(py_initial - py_final) < tol
+        and abs(pz_initial - pz_final) < tol
     )
 
 
@@ -121,10 +122,9 @@ def check_conservation(initial_vectors, final_vectors, tol=1e-6):
     - Works for 2-body, 3-body, and general N-body decays/scattering.
     - This is the main conservation check we’ll use everywhere.
     """
-    return (
-        check_energy_conservation(initial_vectors, final_vectors, tol) and
-        check_momentum_conservation(initial_vectors, final_vectors, tol)
-    )
+    return check_energy_conservation(
+        initial_vectors, final_vectors, tol
+    ) and check_momentum_conservation(initial_vectors, final_vectors, tol)
 
 
 def check_energy_momentum(initial_vectors, final_vectors, tol=1e-6):
@@ -135,19 +135,25 @@ def check_energy_momentum(initial_vectors, final_vectors, tol=1e-6):
     """
     Ei = sum(v.E for v in initial_vectors)
     Ef = sum(v.E for v in final_vectors)
-    pxi = sum(v.px for v in initial_vectors); pxf = sum(v.px for v in final_vectors)
-    pyi = sum(v.py for v in initial_vectors); pyf = sum(v.py for v in final_vectors)
-    pzi = sum(v.pz for v in initial_vectors); pzf = sum(v.pz for v in final_vectors)
-    dE = Ei - Ef; dPx = pxi - pxf; dPy = pyi - pyf; dPz = pzi - pzf
-    conserved = (abs(dE) < tol and abs(dPx) < tol and abs(dPy) < tol and abs(dPz) < tol)
+    pxi = sum(v.px for v in initial_vectors)
+    pxf = sum(v.px for v in final_vectors)
+    pyi = sum(v.py for v in initial_vectors)
+    pyf = sum(v.py for v in final_vectors)
+    pzi = sum(v.pz for v in initial_vectors)
+    pzf = sum(v.pz for v in final_vectors)
+    dE = Ei - Ef
+    dPx = pxi - pxf
+    dPy = pyi - pyf
+    dPz = pzi - pzf
+    conserved = abs(dE) < tol and abs(dPx) < tol and abs(dPy) < tol and abs(dPz) < tol
     return {
-        'conserved': conserved,
-        'deltaE': dE,
-        'deltaPx': dPx,
-        'deltaPy': dPy,
-        'deltaPz': dPz,
-        'E_initial': Ei,
-        'E_final': Ef
+        "conserved": conserved,
+        "deltaE": dE,
+        "deltaPx": dPx,
+        "deltaPy": dPy,
+        "deltaPz": dPz,
+        "E_initial": Ei,
+        "E_final": Ef,
     }
 
 
@@ -159,18 +165,20 @@ def two_body_decay(parent: FourVector, m1: float, m2: float):
     (suitable for tests), then boosting to lab frame if parent moves.
     """
     import math
+
     M2 = parent.E**2 - parent.magnitude**2
     M = math.sqrt(M2) if M2 > 0 else 0.0
     if m1 + m2 > M + 1e-9:
         raise ValueError("Kinematically forbidden decay: m1+m2 > parent mass")
     if abs(M - (m1 + m2)) < 1e-12:
         p_star = 0.0
-        E1 = m1; E2 = m2
+        E1 = m1
+        E2 = m2
     else:
-        term1 = M**2 - (m1 + m2)**2
-        term2 = M**2 - (m1 - m2)**2
+        term1 = M**2 - (m1 + m2) ** 2
+        term2 = M**2 - (m1 - m2) ** 2
         inside = max(term1 * term2, 0.0)
-        p_star = math.sqrt(inside) / (2*M)
+        p_star = math.sqrt(inside) / (2 * M)
         E1 = math.sqrt(m1**2 + p_star**2)
         E2 = math.sqrt(m2**2 + p_star**2)
     d1_rf = FourVector(E1, 0.0, 0.0, p_star)

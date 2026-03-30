@@ -27,9 +27,11 @@ class TauPionHelicityMatrixElement(MatrixElement):
     """
 
     name = "Tau → π ν (helicity-dependent)"
-    description = "V-A weak decay with tau polarization" 
+    description = "V-A weak decay with tau polarization"
 
-    def M2(self, parent_p4:tuple, daughter_p4s: list, context: dict | None = None) -> float:
+    def M2(
+        self, parent_p4: tuple, daughter_p4s: list, context: dict | None = None
+    ) -> float:
         """
         |M|² = 1 + h·cosθ
 
@@ -39,16 +41,16 @@ class TauPionHelicityMatrixElement(MatrixElement):
 
         if len(daughter_p4s) < 1:
             return 1.0
-        
-        #get spin state - fall back to unpolarized
+
+        # get spin state - fall back to unpolarized
         spin = None
         if context:
             spin = context.get("spin_state", None)
-        
+
         if spin is None or not spin.is_polarized:
             return 1.0
-        
-        #Pion four-vector (index 0 by convention)
+
+        # Pion four-vector (index 0 by convention)
         pion_p4 = daughter_p4s[0]
         _, px, py, pz = pion_p4
         p_pion = np.array([px, py, pz], dtype=float)
@@ -56,7 +58,7 @@ class TauPionHelicityMatrixElement(MatrixElement):
 
         if p_mag < 1e-10:
             return 1.0
-        
+
         ## cosθ = angle between pion momentum and tau spin axis
         cos_theta = float(np.dot(p_pion / p_mag, spin.quantization_axis))
         cos_theta = float(np.clip(cos_theta, -1.0, 1.0))

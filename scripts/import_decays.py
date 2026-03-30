@@ -11,22 +11,20 @@ conn = get_conn()
 cur = conn.cursor()
 
 # === Create table if it doesn't exist ===
-cur.execute(
-    """
+cur.execute("""
     CREATE TABLE IF NOT EXISTS decays (
         pdg_id INTEGER,
         decay_mode TEXT,
         branching_fraction DOUBLE PRECISION,
         UNIQUE(pdg_id, decay_mode)
     );
-    """
-)
+    """)
 
 # === Read CSV and insert data ===
 inserted = 0
 skipped = 0
 
-with open(CSV_PATH, newline='', encoding='utf-8') as csvfile:
+with open(CSV_PATH, newline="", encoding="utf-8") as csvfile:
     reader = csv.DictReader(csvfile)
     for row in reader:
         try:
@@ -61,6 +59,8 @@ with open(CSV_PATH, newline='', encoding='utf-8') as csvfile:
 conn.commit()
 conn.close()
 
-print(f"✅ Done! Inserted {inserted} new rows. Skipped {skipped} (duplicates or invalid).")
+print(
+    f"✅ Done! Inserted {inserted} new rows. Skipped {skipped} (duplicates or invalid)."
+)
 print("📦 Database: Postgres (get_conn())")
 print(f"📊 Table: decays")

@@ -18,16 +18,18 @@ def p4(E: float, px: float, py: float, pz: float) -> tuple:
     return (E, px, py, pz)
 
 
-def two_body_decay(M: float, mA: float, mB: float, rng: np.random.Generator) -> Tuple[tuple, tuple]:
+def two_body_decay(
+    M: float, mA: float, mB: float, rng: np.random.Generator
+) -> Tuple[tuple, tuple]:
     """
     Isotropic 2-body decay in rest frame of parent with mass M.
     Returns (pA, pB) as tuples (E, px, py, pz).
-    
+
     Args:
         rng: NumPy random generator (np.random.default_rng)
     """
-    term1 = M**2 - (mA + mB)**2
-    term2 = M**2 - (mA - mB)**2
+    term1 = M**2 - (mA + mB) ** 2
+    term2 = M**2 - (mA - mB) ** 2
     p = math.sqrt(max(term1 * term2, 0.0)) / (2 * M)
 
     costheta = rng.uniform(-1, 1)
@@ -47,74 +49,76 @@ def two_body_decay(M: float, mA: float, mB: float, rng: np.random.Generator) -> 
     return pA, pB
 
 
-def generate_muon_decay_fast(parent_mass: float, rng: np.random.Generator) -> Tuple[List[tuple], float]:
+def generate_muon_decay_fast(
+    parent_mass: float, rng: np.random.Generator
+) -> Tuple[List[tuple], float]:
     """
     Fast muon decay using correct Raubold–Lynch decomposition.
     μ⁻ → e⁻ (ν̄ₑ νμ)* with proper particle ordering.
-    
+
     Decay topology:
     1. μ at rest → e⁻ + (ν̄ₑ νμ)*
     2. (ν̄ₑ νμ)* → ν̄ₑ + νμ (isotropic, massless)
-    
+
     Uses Michel spectrum x²(3-2x) exact physics, ~10× faster than general 3-body.
-    
-    Returns ([p_nuebar, p_numu, p_e], weight) 
+
+    Returns ([p_nuebar, p_numu, p_e], weight)
     Note: Order matters! Particle 3 is the spectator (electron).
     """
     m_mu = parent_mass
     m_e = 0.511  # MeV
-    
+
     # Correct ordering for Raubold-Lynch:
     # Particles 1,2 form virtual pair (both massless neutrinos)
     # Particle 3 is spectator (electron)
     m_nuebar = 0.0
     m_numu = 0.0
     m_electron = m_e
-    
+
     # Sample virtual mass m₁₂ of neutrino pair in m₁₂² (Lorentz invariant)
     m12_min = m_nuebar + m_numu
     m12_max = m_mu - m_electron
-    
+
     m12_sq_min = m12_min**2
     m12_sq_max = m12_max**2
     m12_sq = rng.uniform(m12_sq_min, m12_sq_max)
     m12 = math.sqrt(m12_sq)
-    
+
     # ===== Decay 1: μ → e + (νν)* =====
-    term1 = m_mu**2 - (m12 + m_electron)**2
-    term2 = m_mu**2 - (m12 - m_electron)**2
+    term1 = m_mu**2 - (m12 + m_electron) ** 2
+    term2 = m_mu**2 - (m12 - m_electron) ** 2
     p_e_mag = math.sqrt(max(term1 * term2, 0.0)) / (2 * m_mu)
-    
+
     # Isotropic electron direction
     cos_theta_e = rng.uniform(-1, 1)
     sin_theta_e = math.sqrt(1 - cos_theta_e**2)
     phi_e = rng.uniform(0, 2 * math.pi)
-    
+
     px_e = p_e_mag * sin_theta_e * math.cos(phi_e)
     py_e = p_e_mag * sin_theta_e * math.sin(phi_e)
     pz_e = p_e_mag * cos_theta_e
-    
+
     E_e = math.sqrt(m_electron**2 + p_e_mag**2)
     E12 = math.sqrt(m12**2 + p_e_mag**2)
-    
+
     p_e = (E_e, px_e, py_e, pz_e)
     p12 = (E12, -px_e, -py_e, -pz_e)  # Opposite momentum
-    
+
     # ===== Decay 2: (νν)* → ν̄ₑ + νμ (massless, isotropic) =====
     # In rest frame of (νν)*, both massless neutrinos have equal magnitude
     p_nu_mag = m12 / 2.0
-    
+
     cos_theta_nu = rng.uniform(-1, 1)
     sin_theta_nu = math.sqrt(1 - cos_theta_nu**2)
     phi_nu = rng.uniform(0, 2 * math.pi)
-    
+
     px_nu_rf = p_nu_mag * sin_theta_nu * math.cos(phi_nu)
     py_nu_rf = p_nu_mag * sin_theta_nu * math.sin(phi_nu)
     pz_nu_rf = p_nu_mag * cos_theta_nu
-    
+
     p_nuebar_rf = (p_nu_mag, px_nu_rf, py_nu_rf, pz_nu_rf)
     p_numu_rf = (p_nu_mag, -px_nu_rf, -py_nu_rf, -pz_nu_rf)
-    
+
     # ===== INLINED: lorentz_boost for neutrinos into lab frame =====
     # Boost velocity: β = p12 / E12
     E_p12, px_p12, py_p12, pz_p12 = p12
@@ -122,66 +126,77 @@ def generate_muon_decay_fast(parent_mass: float, rng: np.random.Generator) -> Tu
         bx = px_p12 / E_p12
         by = py_p12 / E_p12
         bz = pz_p12 / E_p12
-        
-        beta2 = bx*bx + by*by + bz*bz
-        
+
+        beta2 = bx * bx + by * by + bz * bz
+
         if beta2 < 1e-18:
             p_nuebar = p_nuebar_rf
             p_numu = p_numu_rf
         else:
             gamma = 1.0 / math.sqrt(1.0 - beta2)
-            
+
             # Boost ν̄ₑ
             E_nuebar_rf, px_nuebar_rf, py_nuebar_rf, pz_nuebar_rf = p_nuebar_rf
             bp = bx * px_nuebar_rf + by * py_nuebar_rf + bz * pz_nuebar_rf
             E_nuebar = gamma * (E_nuebar_rf + bp)
             factor = ((gamma - 1.0) * bp / beta2) + gamma * E_nuebar_rf
-            p_nuebar = (E_nuebar, 
-                       px_nuebar_rf + factor * bx,
-                       py_nuebar_rf + factor * by,
-                       pz_nuebar_rf + factor * bz)
-            
+            p_nuebar = (
+                E_nuebar,
+                px_nuebar_rf + factor * bx,
+                py_nuebar_rf + factor * by,
+                pz_nuebar_rf + factor * bz,
+            )
+
             # Boost νμ
             E_numu_rf, px_numu_rf, py_numu_rf, pz_numu_rf = p_numu_rf
             bp = bx * px_numu_rf + by * py_numu_rf + bz * pz_numu_rf
             E_numu = gamma * (E_numu_rf + bp)
             factor = ((gamma - 1.0) * bp / beta2) + gamma * E_numu_rf
-            p_numu = (E_numu,
-                     px_numu_rf + factor * bx,
-                     py_numu_rf + factor * by,
-                     pz_numu_rf + factor * bz)
+            p_numu = (
+                E_numu,
+                px_numu_rf + factor * bx,
+                py_numu_rf + factor * by,
+                pz_numu_rf + factor * bz,
+            )
     else:
         p_nuebar = p_nuebar_rf
         p_numu = p_numu_rf
-    
+
     # Phase-space weight: Jacobian from m₁₂² sampling
     weight = (
-        math.sqrt(max(m12**2 - (m_nuebar + m_numu)**2, 0.0)) *
-        math.sqrt(max((m_mu**2 - (m12 + m_electron)**2) * 
-                     (m_mu**2 - (m12 - m_electron)**2), 0.0)) *
-        (1.0 / (2.0 * m12))  # Jacobian: dm₁₂²/dm₁₂
+        math.sqrt(max(m12**2 - (m_nuebar + m_numu) ** 2, 0.0))
+        * math.sqrt(
+            max(
+                (m_mu**2 - (m12 + m_electron) ** 2)
+                * (m_mu**2 - (m12 - m_electron) ** 2),
+                0.0,
+            )
+        )
+        * (1.0 / (2.0 * m12))  # Jacobian: dm₁₂²/dm₁₂
     )
-    
+
     return [p_nuebar, p_numu, p_e], weight
 
 
-def generate_three_body_decay(parent_mass: float, masses: List[float], rng: np.random.Generator) -> Tuple[List[tuple], float]:
+def generate_three_body_decay(
+    parent_mass: float, masses: List[float], rng: np.random.Generator
+) -> Tuple[List[tuple], float]:
     """
     Raubold–Lynch 3-body phase space generator (rest frame).
-    
-    CRITICAL: masses must be ordered so particle 3 is the "spectator" 
+
+    CRITICAL: masses must be ordered so particle 3 is the "spectator"
     that doesn't participate in the virtual pair.
-    
+
     For example:
     - (m_a, m_b, m_c) → decay into a, b, c with (a,b) forming virtual pair
     - For muon: (m_ν̄, m_ν, m_e) → electron is spectator
-    
+
     Returns (list_of_p4s, phase_space_weight).
     p4s are returned as tuples (E, px, py, pz).
-    
+
     INLINED for speed: two_body_decay and lorentz_boost are inlined directly.
     This eliminates 4 function calls per event (major speedup in hot loop).
-    
+
     Args:
         rng: NumPy random generator (np.random.default_rng)
     """
@@ -202,8 +217,8 @@ def generate_three_body_decay(parent_mass: float, masses: List[float], rng: np.r
     m12 = math.sqrt(m12_sq)
 
     # ===== INLINED: two_body_decay(M, m12, m3, rng) for P → (12)* + 3 =====
-    term1 = M**2 - (m12 + m3)**2
-    term2 = M**2 - (m12 - m3)**2
+    term1 = M**2 - (m12 + m3) ** 2
+    term2 = M**2 - (m12 - m3) ** 2
     p_mag = math.sqrt(max(term1 * term2, 0.0)) / (2 * M)
 
     costheta = rng.uniform(-1, 1)
@@ -221,8 +236,8 @@ def generate_three_body_decay(parent_mass: float, masses: List[float], rng: np.r
     p3 = (E3, -px, -py, -pz)
 
     # ===== INLINED: two_body_decay(m12, m1, m2, rng) for (12)* → 1 + 2 =====
-    term1 = m12**2 - (m1 + m2)**2
-    term2 = m12**2 - (m1 - m2)**2
+    term1 = m12**2 - (m1 + m2) ** 2
+    term2 = m12**2 - (m1 - m2) ** 2
     p_mag_12 = math.sqrt(max(term1 * term2, 0.0)) / (2 * m12)
 
     costheta_12 = rng.uniform(-1, 1)
@@ -247,7 +262,7 @@ def generate_three_body_decay(parent_mass: float, masses: List[float], rng: np.r
 
     # Boost p1_star
     E1_star, px1_star, py1_star, pz1_star = p1_star
-    beta2 = bx*bx + by*by + bz*bz
+    beta2 = bx * bx + by * by + bz * bz
     if beta2 < 1e-18:
         p1 = p1_star
     else:
@@ -255,7 +270,12 @@ def generate_three_body_decay(parent_mass: float, masses: List[float], rng: np.r
         bp = bx * px1_star + by * py1_star + bz * pz1_star
         E1_prime = gamma * (E1_star + bp)
         factor = ((gamma - 1.0) * bp / beta2) + gamma * E1_star
-        p1 = (E1_prime, px1_star + factor * bx, py1_star + factor * by, pz1_star + factor * bz)
+        p1 = (
+            E1_prime,
+            px1_star + factor * bx,
+            py1_star + factor * by,
+            pz1_star + factor * bz,
+        )
 
     # Boost p2_star
     E2_star, px2_star, py2_star, pz2_star = p2_star
@@ -266,15 +286,20 @@ def generate_three_body_decay(parent_mass: float, masses: List[float], rng: np.r
         bp = bx * px2_star + by * py2_star + bz * pz2_star
         E2_prime = gamma * (E2_star + bp)
         factor = ((gamma - 1.0) * bp / beta2) + gamma * E2_star
-        p2 = (E2_prime, px2_star + factor * bx, py2_star + factor * by, pz2_star + factor * bz)
+        p2 = (
+            E2_prime,
+            px2_star + factor * bx,
+            py2_star + factor * by,
+            pz2_star + factor * bz,
+        )
 
     # Phase-space weight (Jacobian)
     # Includes correction factor 1/(2*m12) for proper m12² sampling
     # (vs. linear m12 which would miss this factor)
     weight = (
-        math.sqrt(max(m12**2 - (m1 + m2)**2, 0.0)) *
-        math.sqrt(max((M**2 - (m12 + m3)**2) * (M**2 - (m12 - m3)**2), 0.0)) *
-        (1.0 / (2.0 * m12))  # ✅ Jacobian factor from m12² sampling
+        math.sqrt(max(m12**2 - (m1 + m2) ** 2, 0.0))
+        * math.sqrt(max((M**2 - (m12 + m3) ** 2) * (M**2 - (m12 - m3) ** 2), 0.0))
+        * (1.0 / (2.0 * m12))  # ✅ Jacobian factor from m12² sampling
     )
 
     return [p1, p2, p3], weight
@@ -284,7 +309,7 @@ def generate_n_body_decay(
     parent_p4: FourVector,
     masses: List[float],
     rng: Optional[np.random.Generator] = None,
-    matrix_element: Optional[Callable] = None
+    matrix_element: Optional[Callable] = None,
 ) -> Tuple[List[FourVector], float]:
     """
     Generate an N-body decay using Raubold–Lynch algorithm with phase-space weight.
@@ -357,8 +382,8 @@ def generate_n_body_decay(
         m1 = masses[i]
         m2 = virtual_masses[i + 1]
 
-        term1 = m_parent**2 - (m1 + m2)**2
-        term2 = m_parent**2 - (m1 - m2)**2
+        term1 = m_parent**2 - (m1 + m2) ** 2
+        term2 = m_parent**2 - (m1 - m2) ** 2
         if term1 * term2 < 0:
             raise ValueError("Kinematic failure in sequential decay")
 
@@ -395,19 +420,19 @@ def generate_n_body_decay(
 
 
 def validate_four_momentum_conservation(
-    parent_p4: FourVector,
-    final_p4s: list,
-    tolerance: float = 1e-3
+    parent_p4: FourVector, final_p4s: list, tolerance: float = 1e-3
 ) -> bool:
     """Check if 4-momentum is conserved within tolerance (MeV)."""
     import numpy as np
-    
+
     total = sum(final_p4s, FourVector(0.0, 0.0, 0.0, 0.0))
-    
+
     dE = abs(parent_p4.E - total.E)
-    dp = np.linalg.norm(np.array([parent_p4.px, parent_p4.py, parent_p4.pz]) - 
-                        np.array([total.px, total.py, total.pz]))
-    
+    dp = np.linalg.norm(
+        np.array([parent_p4.px, parent_p4.py, parent_p4.pz])
+        - np.array([total.px, total.py, total.pz])
+    )
+
     if dE > tolerance or dp > tolerance:
         print(f"⚠️  4-momentum NOT conserved:")
         print(f"   ΔE = {dE:.6f} MeV (tolerance: {tolerance})")

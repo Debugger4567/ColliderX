@@ -19,23 +19,25 @@ def main():
     cur = conn.cursor()
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle("ColliderX — Physics Validation Summary", fontsize=15, fontweight="500", y=1.01)
+    fig.suptitle(
+        "ColliderX — Physics Validation Summary", fontsize=15, fontweight="500", y=1.01
+    )
 
     # Panel 1: Michel spectrum
-    cur.execute(
-        """
+    cur.execute("""
         SELECT fs.E
         FROM final_states fs
         JOIN events e ON fs.event_id = e.id
         WHERE e.parent = 'Muon' AND fs.particle = 'Electron'
         LIMIT 50000
-        """
-    )
+        """)
     E_e = np.array([r[0] for r in cur.fetchall()], dtype=float)
     x_e = 2 * E_e / 105.658
     x_e = x_e[(x_e > 0) & (x_e < 1)]
 
-    axes[0, 0].hist(x_e, bins=60, density=True, alpha=0.8, color="#e87070", label="ColliderX")
+    axes[0, 0].hist(
+        x_e, bins=60, density=True, alpha=0.8, color="#e87070", label="ColliderX"
+    )
     x_grid = np.linspace(0, 1, 200)
     michel = x_grid**2 * (3 - 2 * x_grid)
     michel /= np.trapezoid(michel, x_grid)
@@ -47,15 +49,13 @@ def main():
     axes[0, 0].grid(alpha=0.3)
 
     # Panel 2: Z invariant mass
-    cur.execute(
-        """
+    cur.execute("""
         SELECT e.id, fs.px, fs.py, fs.pz, fs.E
         FROM final_states fs
         JOIN events e ON fs.event_id = e.id
         WHERE e.parent = 'Z boson'
         ORDER BY e.id
-        """
-    )
+        """)
     rows = cur.fetchall()
     events_z = {}
     for eid, px, py, pz, E in rows:
@@ -71,7 +71,14 @@ def main():
     masses = np.array(masses, dtype=float)
 
     if len(masses) > 0:
-        hist, edges, _ = axes[0, 1].hist(masses, bins=80, range=(85, 97), alpha=0.8, color="#4ecba0", label="ColliderX")
+        hist, edges, _ = axes[0, 1].hist(
+            masses,
+            bins=80,
+            range=(85, 97),
+            alpha=0.8,
+            color="#4ecba0",
+            label="ColliderX",
+        )
         centres = 0.5 * (edges[:-1] + edges[1:])
 
         def bw(m, M, G, A):
@@ -79,9 +86,17 @@ def main():
 
         try:
             mask = (centres > 88) & (centres < 95)
-            popt, _ = curve_fit(bw, centres[mask], hist[mask], p0=[91.2, 2.5, max(hist.max(), 1e-9)])
+            popt, _ = curve_fit(
+                bw, centres[mask], hist[mask], p0=[91.2, 2.5, max(hist.max(), 1e-9)]
+            )
             x_fit = np.linspace(85, 97, 500)
-            axes[0, 1].plot(x_fit, bw(x_fit, *popt), "r--", lw=2, label=f"BW fit: M={popt[0]:.2f} GeV")
+            axes[0, 1].plot(
+                x_fit,
+                bw(x_fit, *popt),
+                "r--",
+                lw=2,
+                label=f"BW fit: M={popt[0]:.2f} GeV",
+            )
         except Exception:
             pass
 
@@ -92,16 +107,14 @@ def main():
     axes[0, 1].grid(alpha=0.3)
 
     # Panel 3: Z cosθ
-    cur.execute(
-        """
+    cur.execute("""
         SELECT fs.px, fs.py, fs.pz
         FROM final_states fs
         JOIN events e ON fs.event_id = e.id
         WHERE e.parent = 'Z boson'
           AND e.decay_mode = 'μ+ μ−'
           AND fs.particle = 'Muon'
-        """
-    )
+        """)
     rows = cur.fetchall()
     cos_z = []
     for px, py, pz in rows:
@@ -111,7 +124,15 @@ def main():
     cos_z = np.array(cos_z, dtype=float)
 
     if len(cos_z) > 0:
-        axes[1, 0].hist(cos_z, bins=50, range=(-1, 1), density=True, alpha=0.8, color="#7b8cf7", label="ColliderX")
+        axes[1, 0].hist(
+            cos_z,
+            bins=50,
+            range=(-1, 1),
+            density=True,
+            alpha=0.8,
+            color="#7b8cf7",
+            label="ColliderX",
+        )
         x = np.linspace(-1, 1, 200)
         y = 1 + x**2
         y /= np.trapezoid(y, x)
@@ -124,16 +145,14 @@ def main():
     axes[1, 0].grid(alpha=0.3)
 
     # Panel 4: Tau pion asymmetry
-    cur.execute(
-        """
+    cur.execute("""
         SELECT fs.pz, fs.px, fs.py
         FROM final_states fs
         JOIN events e ON fs.event_id = e.id
         WHERE e.parent = 'Z boson'
           AND e.decay_mode IN ('τ+ τ−', 'tau+ tau-')
           AND fs.particle IN ('Pion-', 'Pion+')
-        """
-    )
+        """)
     rows = cur.fetchall()
     cos_tau = []
     for pz, px, py in rows:
@@ -143,7 +162,15 @@ def main():
     cos_tau = np.array(cos_tau, dtype=float)
 
     if len(cos_tau) > 0:
-        axes[1, 1].hist(cos_tau, bins=50, range=(-1, 1), density=True, alpha=0.8, color="#a78bfa", label="ColliderX")
+        axes[1, 1].hist(
+            cos_tau,
+            bins=50,
+            range=(-1, 1),
+            density=True,
+            alpha=0.8,
+            color="#a78bfa",
+            label="ColliderX",
+        )
     else:
         axes[1, 1].text(
             0.5,

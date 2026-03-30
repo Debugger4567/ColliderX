@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 from db import get_conn
 
 
-
 def load_pi0_events():
     conn = get_conn()
     cur = conn.cursor()
@@ -32,7 +31,7 @@ def load_pi0_events():
         WHERE e.parent = 'Pion0'
         ORDER BY e.id
     """)
-    
+
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -41,6 +40,7 @@ def load_pi0_events():
     for event_id, particle, px, py, pz in rows:
         events.setdefault(event_id, []).append((particle, px, py, pz))
     return events
+
 
 def opening_angle(p1, p2):
     """Return opening angle between two 3-vectors in radians."""
@@ -55,6 +55,7 @@ def opening_angle(p1, p2):
     cos_theta = np.clip(dot / mag, -1.0, 1.0)
     return np.arccos(cos_theta)
 
+
 def main():
     events = load_pi0_events()
 
@@ -62,7 +63,7 @@ def main():
     skipped = 0
 
     for event_id, particles in events.items():
-        photons = [p for p in particles if p[0] == 'Photon']
+        photons = [p for p in particles if p[0] == "Photon"]
         if len(photons) != 2:
             skipped += 1
             continue
@@ -83,7 +84,7 @@ def main():
 
     plt.figure(figsize=(7, 5))
     plt.hist(angles, bins=60, range=(0, np.pi), density=True, alpha=0.8)
-    plt.axvline(np.pi, color='r', linestyle='--', linewidth=2, label=r"$\theta = \pi$")
+    plt.axvline(np.pi, color="r", linestyle="--", linewidth=2, label=r"$\theta = \pi$")
     plt.xlabel("Opening angle θ (radians)")
     plt.ylabel("Normalized counts")
     plt.title(r"$\pi^0 \to \gamma\gamma$ opening angle (truth level)")
@@ -91,6 +92,7 @@ def main():
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.show()
+
 
 if __name__ == "__main__":
     main()

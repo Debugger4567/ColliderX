@@ -3,6 +3,7 @@ import runpy
 import sys
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -79,10 +80,10 @@ def test_main_module_import_and_cli_wiring(monkeypatch):
     assert hasattr(module, "main")
     assert hasattr(module, "parse_args")
 
-    monkeypatch.setattr(sys, "argv", ["main.py", "--parent", "Muon", "--n-events", "1"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "Muon", "1"])
     args = module.parse_args()
-    assert args.parent == "Muon"
-    assert args.n_events == 1
+    assert args.particle == "Muon"
+    assert args.events == 1
 
 
 @pytest.mark.usefixtures("db_ready")
@@ -106,12 +107,12 @@ def test_simulate_chain_smoke():
 @pytest.mark.usefixtures("db_ready")
 def test_all_plot_modules_smoke():
     modules_with_main = [
-        "plots.dalitz_muon_decay",
-        "plots.michel_spectrum",
-        "plots.michel_overlay",
-        "plots.z_costheta",
-        "plots.z_invariant_mass",
-        "plots.michel_flat_phase_space",
+        "visualization.dalitz_muon_decay",
+        "visualization.michel_spectrum",
+        "visualization.michel_overlay",
+        "visualization.z_costheta",
+        "visualization.z_invariant_mass",
+        "visualization.michel_flat_phase_space",
     ]
 
     for mod_name in modules_with_main:
@@ -120,4 +121,4 @@ def test_all_plot_modules_smoke():
         mod.main()
 
     # This module executes at import time; run as script path for smoke coverage.
-    runpy.run_module("plots.electron_energy_distribution", run_name="__main__")
+    runpy.run_module("visualization.electron_energy_distribution", run_name="__main__")

@@ -1,13 +1,17 @@
 import os
 import math
 import numpy as np
-from .helicity import _boost_to_rest_frame  # uses p4_to_boost, rest_frame_p4 -> spatial (3,)
+from .helicity import (
+    _boost_to_rest_frame,
+)  # uses p4_to_boost, rest_frame_p4 -> spatial (3,)
+
 
 def _unit(v: np.ndarray) -> np.ndarray:
     n = float(np.linalg.norm(v))
     if n < 1e-14:
         return np.array([0.0, 0.0, 1.0], dtype=float)
     return v / n
+
 
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +23,7 @@ from .phase_space import generate_three_body_decay
 from db import get_conn
 from .breit_wigner import sample_relativistic_bw  # NEW
 from .detector import apply_detector
+
 
 def _conn():
     return get_conn()
@@ -38,13 +43,13 @@ def get_particle(name: str) -> dict:
             cur.execute(
                 'SELECT "Width Γ (MeV)" FROM particles '
                 'WHERE LOWER("Name")=LOWER(%s) OR LOWER("Symbol")=LOWER(%s) '
-                'LIMIT 1',
+                "LIMIT 1",
                 (name, name),
             )
             row = cur.fetchone()
         width_mev = float(row[0]) if (row and row[0] is not None) else 0.0
         _PARTICLE_CACHE[name] = {
-            "mass": p.mass,      # MeV
+            "mass": p.mass,  # MeV
             "width": width_mev,  # MeV
             "name": p.name,
         }
@@ -72,36 +77,34 @@ def p4(E: float, px: float, py: float, pz: float) -> tuple:
 
 
 def _reorder_daughters_for_matrix_element(
-    daughter_names: list[str], 
-    p4s: list[tuple], 
-    parent_pdg: int
+    daughter_names: list[str], p4s: list[tuple], parent_pdg: int
 ) -> list[tuple]:
     """
     Reorder daughter momenta to match matrix element expectations.
-    
+
     For weak V-A decays: [charged_lepton, antineutrino, neutrino]
-    
+
     Args:
         daughter_names: Particle names in generation order
         p4s: 4-momenta in same order as daughter_names
         parent_pdg: Parent PDG ID (for context)
-        
+
     Returns:
         Reordered list of 4-momenta matching matrix element conventions
     """
     # Get PDG IDs for all daughters
     daughter_pdgs = [get_pdg_id_cached(name) for name in daughter_names]
-    
+
     # Build (pdg, p4, name) tuples
     daughters = list(zip(daughter_pdgs, p4s, daughter_names))
-    
+
     # For 3-body leptonic decays, enforce V-A ordering
     if len(daughters) == 3:
         charged_minus_p4 = None
         charged_plus_p4 = None
         antineutrino_p4 = None
         neutrino_p4 = None
-        
+
         for pdg, p4, name in daughters:
             # Charged leptons: e-, mu-, tau- (PDG: 11, 13, 15)
             if pdg in [11, 13, 15]:
@@ -135,18 +138,28 @@ def _reorder_daughters_for_matrix_element(
             return [charged_plus_p4, neutrino_p4, antineutrino_p4]
 
         # Fallback for legacy or incomplete PDG metadata
-        charged_lepton_p4 = charged_minus_p4 if charged_minus_p4 is not None else charged_plus_p4
-        if charged_lepton_p4 is not None and antineutrino_p4 is not None and neutrino_p4 is not None:
+        charged_lepton_p4 = (
+            charged_minus_p4 if charged_minus_p4 is not None else charged_plus_p4
+        )
+        if (
+            charged_lepton_p4 is not None
+            and antineutrino_p4 is not None
+            and neutrino_p4 is not None
+        ):
             return [charged_lepton_p4, antineutrino_p4, neutrino_p4]
-    
+
     # Fallback: return original order
     # WARNING: Only FlatMatrixElement tolerates ambiguous ordering.
     # If you add a physics-sensitive ME that doesn't enforce ordering, it will silently fail.
 
-    #neutron beta decay: n(2112) -> p(2212) + e-(11) + nu_e_bar(-12)
+    # neutron beta decay: n(2112) -> p(2212) + e-(11) + nu_e_bar(-12)
     if parent_pdg == 2112 and len(daughter_names) == 3:
-        i_lep = next((i for i, pdg in enumerate(daughter_pdgs) if pdg in {11, 13, 15}), None)
-        i_anu = next((i for i, pdg in enumerate(daughter_pdgs) if pdg in {-12, -14, -16}), None)
+        i_lep = next(
+            (i for i, pdg in enumerate(daughter_pdgs) if pdg in {11, 13, 15}), None
+        )
+        i_anu = next(
+            (i for i, pdg in enumerate(daughter_pdgs) if pdg in {-12, -14, -16}), None
+        )
         i_p = next((i for i, pdg in enumerate(daughter_pdgs) if pdg in {2212}), None)
 
         if None not in (i_lep, i_anu, i_p):
@@ -155,18 +168,22 @@ def _reorder_daughters_for_matrix_element(
     return p4s
 
 
-def validate_event_inline(parent_E: float, final_states: list, tol: float = 1e-6) -> bool:
+def validate_event_inline(
+    parent_E: float, final_states: list, tol: float = 1e-6
+) -> bool:
     """Inlined conservation check (faster, no tuple unpacking)."""
     E_f = sum(p[0] for p in final_states)
     px_f = sum(p[1] for p in final_states)
     py_f = sum(p[2] for p in final_states)
     pz_f = sum(p[3] for p in final_states)
-    
+
     # Parent is at rest: px=py=pz=0
-    return (abs(parent_E - E_f) < tol and 
-            abs(px_f) < tol and 
-            abs(py_f) < tol and 
-            abs(pz_f) < tol)
+    return (
+        abs(parent_E - E_f) < tol
+        and abs(px_f) < tol
+        and abs(py_f) < tol
+        and abs(pz_f) < tol
+    )
 
 
 def init_event_db():
@@ -200,11 +217,14 @@ def init_event_db():
 def get_pdg_id(particle_name: str) -> int | None:
     """Resolve PDG ID from particle name."""
     with _conn() as conn, conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT "PDG ID" FROM particles
             WHERE LOWER("Name") = LOWER(%s) OR LOWER("Symbol") = LOWER(%s)
             LIMIT 1
-        """, (particle_name, particle_name))
+        """,
+            (particle_name, particle_name),
+        )
         row = cur.fetchone()
     return int(row[0]) if row else None
 
@@ -223,36 +243,41 @@ def random_unit_vector(rng: np.random.Generator) -> np.ndarray:
     cos_theta = rng.uniform(-1, 1)
     phi = rng.uniform(0, 2 * np.pi)
     sin_theta = np.sqrt(1 - cos_theta**2)
-    return np.array([
-        sin_theta * np.cos(phi),
-        sin_theta * np.sin(phi),
-        cos_theta
-    ])
+    return np.array([sin_theta * np.cos(phi), sin_theta * np.sin(phi), cos_theta])
 
 
-def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], rng: np.random.Generator, apply_weights: bool = True, parent_pdg: int = 0, afb: float = 0.0):
+def _generate_decay_fourvectors(
+    parent_mass: float,
+    daughter_names: list[str],
+    rng: np.random.Generator,
+    apply_weights: bool = True,
+    parent_pdg: int = 0,
+    afb: float = 0.0,
+):
     """
     Generate decay in rest frame. Returns (list of p4 tuples, total weight).
-    
+
     Clean architecture:
         1. Phase space generation (kinematic sampling)
         2. Matrix element lookup (physics weighting)
         3. Total weight = ps_weight * |M|²
-    
+
     No physics hacks. No special cases. Pure pipeline.
     """
     from .matrix_elements import get_matrix_element
-    
+
     masses = [get_particle(name)["mass"] for name in daughter_names]
     N = len(masses)
-    
+
     # Get PDG IDs for matrix element lookup
     # NOTE: Sorting PDGs prevents combinatorial key explosion.
     # Daughter ordering is preserved separately via _reorder_daughters_for_matrix_element().
     # Future: If CP-violating or ordering-sensitive decays needed, may need frozenset(daughter_pdgs) instead.
-    daughter_pdgs = tuple(sorted([get_pdg_id_cached(name) or 0 for name in daughter_names]))
+    daughter_pdgs = tuple(
+        sorted([get_pdg_id_cached(name) or 0 for name in daughter_names])
+    )
     decay_key = (parent_pdg, daughter_pdgs)
-    
+
     # General 2-body decay
     if N == 2:
         m1, m2 = masses
@@ -261,8 +286,12 @@ def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], r
 
         term1 = parent_mass**2 - (m1 + m2) ** 2
         term2 = parent_mass**2 - (m1 - m2) ** 2
-        p_star = math.sqrt(max(term1 * term2, 0.0)) / (2 * parent_mass) if parent_mass > 0 else 0.0
-        
+        p_star = (
+            math.sqrt(max(term1 * term2, 0.0)) / (2 * parent_mass)
+            if parent_mass > 0
+            else 0.0
+        )
+
         E1 = math.sqrt(m1**2 + p_star**2)
         E2 = math.sqrt(m2**2 + p_star**2)
 
@@ -277,41 +306,43 @@ def _generate_decay_fourvectors(parent_mass: float, daughter_names: list[str], r
     # General 3-body decay
     elif N == 3:
         p4s_rest, ps_weight = generate_three_body_decay(parent_mass, masses, rng)
-        
+
         if apply_weights:
             parent_p4 = (parent_mass, 0.0, 0.0, 0.0)
             me = get_matrix_element(decay_key)
-            
+
             # CRITICAL: Reorder daughters to match matrix element expectations
             # V-A expects: [charged_lepton, antineutrino, neutrino]
             ordered_p4s = _reorder_daughters_for_matrix_element(
                 daughter_names, p4s_rest, parent_pdg
             )
-            
+
             M2 = me.M2(parent_p4, ordered_p4s, context={"afb": afb})
             total_weight = ps_weight * M2
         else:
             total_weight = ps_weight
-            
+
         return p4s_rest, total_weight
 
     else:
         raise NotImplementedError("Only 2- and 3-body decays supported")
 
 
-def _simulate_event_inmemory(parent_name: str, 
-                             parent_mass: float,
-                             parent_pdg: int,
-                             fixed_decay_mode: str | None,
-                             event_weight: float, 
-                             rng: np.random.Generator, 
-                             M2_max: dict, 
-                             event_index: int = 0, 
-                             use_accept_reject: bool = False,      # NEW
-                             warmup_events: int = 500,
-                             run_timestamp: str = "",
-                             ar_inflate: float = 1.2,
-                             afb: float = 0.0):              # NEW PARAMETER
+def _simulate_event_inmemory(
+    parent_name: str,
+    parent_mass: float,
+    parent_pdg: int,
+    fixed_decay_mode: str | None,
+    event_weight: float,
+    rng: np.random.Generator,
+    M2_max: dict,
+    event_index: int = 0,
+    use_accept_reject: bool = False,  # NEW
+    warmup_events: int = 500,
+    run_timestamp: str = "",
+    ar_inflate: float = 1.2,
+    afb: float = 0.0,
+):  # NEW PARAMETER
     """
     Generate one event. Supports warm-up (M² max learning) and accept–reject.
     Returns:
@@ -337,14 +368,22 @@ def _simulate_event_inmemory(parent_name: str,
     try:
         apply_weights_flag = False
         p4s_rest, ps_weight = _generate_decay_fourvectors(
-            parent_mass, daughters, rng, apply_weights=apply_weights_flag, parent_pdg=parent_pdg, afb=afb
+            parent_mass,
+            daughters,
+            rng,
+            apply_weights=apply_weights_flag,
+            parent_pdg=parent_pdg,
+            afb=afb,
         )
-        assert not apply_weights_flag, "Phase-space weight must be applied exactly once (generator multiplies ps_weight * M2)."
+        assert (
+            not apply_weights_flag
+        ), "Phase-space weight must be applied exactly once (generator multiplies ps_weight * M2)."
     except Exception:
         return ("FAILED", None)
 
     # Compute |M|^2
     from .matrix_elements import get_matrix_element
+
     parent_p4 = (parent_mass, 0.0, 0.0, 0.0)
     daughter_pdgs = tuple(sorted([get_pdg_id_cached(n) or 0 for n in daughters]))
     decay_key = (parent_pdg, daughter_pdgs)
@@ -411,23 +450,21 @@ def _flush_batch(event_rows, final_state_groups, batch_size: int = 5000):
     """
     if not event_rows:
         return
-    
+
     total_events = len(event_rows)
-    
+
     try:
         for batch_start in range(0, total_events, batch_size):
             batch_end = min(batch_start + batch_size, total_events)
             batch_events = event_rows[batch_start:batch_end]
             batch_final_states = final_state_groups[batch_start:batch_end]
-            
+
             with _conn() as conn, conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT column_name
                     FROM information_schema.columns
                     WHERE table_name = 'events'
-                    """
-                )
+                    """)
                 event_columns = {row[0] for row in cur.fetchall()}
                 has_legacy_weight = "weight" in event_columns
 
@@ -448,27 +485,34 @@ def _flush_batch(event_rows, final_state_groups, batch_size: int = 5000):
                     event_row = (*row, row[4]) if has_legacy_weight else row
                     cur.execute(insert_sql, event_row)
                     event_ids.append(cur.fetchone()[0])
-                
+
                 # Build final_states with correct FK linkage
                 fs_rows = []
                 for event_id, fs_group in zip(event_ids, batch_final_states):
                     for name, px, py, pz, E in fs_group:
                         fs_rows.append((event_id, name, px, py, pz, E))
-                
+
                 # Bulk insert final_states
                 if fs_rows:
                     cur.executemany(
                         "INSERT INTO final_states(event_id, particle, px, py, pz, E) "
                         "VALUES (%s, %s, %s, %s, %s, %s)",
-                        fs_rows
+                        fs_rows,
                     )
-                
+
                 conn.commit()
     except Exception as e:
         print(f"[ERROR] Batch flush failed: {e}")
 
 
-def _assign_daughter_spins(daughter_names: list, p4s: list, parent_pdg: int, rng: np.random.Generator, parent_p4: tuple = (0.0, 0.0, 0.0, 0.0),afb: float = 0.0,) -> list:
+def _assign_daughter_spins(
+    daughter_names: list,
+    p4s: list,
+    parent_pdg: int,
+    rng: np.random.Generator,
+    parent_p4: tuple = (0.0, 0.0, 0.0, 0.0),
+    afb: float = 0.0,
+) -> list:
     """
     Assign SpinState to each daughter based on parent decay.
     """
@@ -518,10 +562,14 @@ def _assign_daughter_spins(daughter_names: list, p4s: list, parent_pdg: int, rng
         pdg = get_pdg_id_cached(name)
 
         if pdg in TAU_PDGS and parent_pdg == 23:
-            spin = compute_tau_helicity(tau_p4=p4, parent_p4=parent_p4, rng=rng, afb=afb)
+            spin = compute_tau_helicity(
+                tau_p4=p4, parent_p4=parent_p4, rng=rng, afb=afb
+            )
 
             if pdg == -15:
-                spin = SpinState(helicity=-spin.helicity, quantization_axis=spin.quantization_axis)
+                spin = SpinState(
+                    helicity=-spin.helicity, quantization_axis=spin.quantization_axis
+                )
         else:
             spin = SpinState.unpolarized()
 
@@ -545,10 +593,17 @@ def _decay_particle_recursive(
     from .matrix_elements import get_matrix_element
 
     STABLE = {
-        "Electron", "Positron", "Photon", "Proton", "Antiproton",
-        "Electron neutrino", "Electron antineutrino",
-        "Muon neutrino", "Muon antineutrino",
-        "Tau neutrino", "Tau antineutrino",
+        "Electron",
+        "Positron",
+        "Photon",
+        "Proton",
+        "Antiproton",
+        "Electron neutrino",
+        "Electron antineutrino",
+        "Muon neutrino",
+        "Muon antineutrino",
+        "Tau neutrino",
+        "Tau antineutrino",
         "Gluon",
     }
 
@@ -619,7 +674,9 @@ def _decay_particle_recursive(
                     afb=afb,
                 )
             except Exception:
-                return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+                return [
+                    {"name": particle_name, "p4": p4, "depth": depth, "parent": None}
+                ]
 
             ordered = _reorder_daughters_for_matrix_element(daughters, cand_p4s, pdg)
             cand_M2 = float(me.M2((parent_mass, 0.0, 0.0, 0.0), ordered, context))
@@ -671,6 +728,7 @@ def _decay_particle_recursive(
     for fv in p4s:
         if beta_mag_sq > 1e-18:
             from .kinematics import FourVector
+
             bfv = FourVector(*fv).boost(beta)
             boosted_p4s.append((bfv.E, bfv.px, bfv.py, bfv.pz))
         else:
@@ -702,20 +760,23 @@ def _decay_particle_recursive(
     return final_states
 
 
-def simulate_events(parent_name: str,
-                    events: int = 10,
-                    n_events: int | None = None,
-                    seed: int | None = None,
-                    event_weight: float = 1.0,
-                    verbose: bool = False,
-                    warmup_events: int = 500,
-                    use_accept_reject: bool = False,
-                    store_neutrinos: bool = False,
-                    ar_inflate: float = 1.2,
-                    fixed_decay_mode: str | None = None,
-                    use_breit_wigner: bool = False,
-                    bw_window: float = 10.0,
-                    afb: float = 0.0) -> dict:
+def simulate_events(
+    parent_name: str,
+    events: int = 10,
+    n_events: int | None = None,
+    seed: int | None = None,
+    parent_energy: float | None = None,
+    event_weight: float = 1.0,
+    verbose: bool = False,
+    warmup_events: int = 500,
+    use_accept_reject: bool = False,
+    store_neutrinos: bool = False,
+    ar_inflate: float = 1.2,
+    fixed_decay_mode: str | None = None,
+    use_breit_wigner: bool = False,
+    bw_window: float = 10.0,
+    afb: float = 0.0,
+) -> dict:
     """
     High-performance batch event generator: pure RAM generation → single DB dump.
     """
@@ -736,6 +797,12 @@ def simulate_events(parent_name: str,
     parent_info = get_particle(parent_name)
     parent_mass = parent_info["mass"]
     parent_width = parent_info.get("width", 0.0)
+
+    if parent_energy is not None:
+        if parent_energy <= 0.0:
+            raise ValueError("parent_energy must be positive")
+        parent_mass = float(parent_energy)
+
     parent_pdg = get_pdg_id_cached(parent_name)
     if parent_pdg is None:
         raise RuntimeError(f"Unknown particle: {parent_name}")
@@ -771,13 +838,15 @@ def simulate_events(parent_name: str,
         if use_breit_wigner and parent_width > 0:
             m_min = max(0.0, parent_mass - bw_window * parent_width)
             m_max = parent_mass + bw_window * parent_width
-            m_event = float(sample_relativistic_bw(
-                m0=parent_mass,
-                gamma=parent_width,
-                rng=rng,
-                m_min=m_min,
-                m_max=m_max,
-            ))
+            m_event = float(
+                sample_relativistic_bw(
+                    m0=parent_mass,
+                    gamma=parent_width,
+                    rng=rng,
+                    m_min=m_min,
+                    m_max=m_max,
+                )
+            )
         else:
             m_event = parent_mass
 
@@ -812,15 +881,21 @@ def simulate_events(parent_name: str,
         if show_progress:
             progress_pct = (i + 1) / total
             if progress_pct - last_progress >= 0.05:
-                print(f"[GEN] {i+1:6d}/{total} ({progress_pct*100:5.1f}%) | Success: {success:6d}")
+                print(
+                    f"[GEN] {i+1:6d}/{total} ({progress_pct*100:5.1f}%) | Success: {success:6d}"
+                )
                 last_progress = progress_pct
 
     gen_time = (datetime.now() - start_gen).total_seconds()
-    print(f"[GEN] ✓ Complete: {success} events in {gen_time:.2f}s ({success/gen_time:.0f} evt/sec)")
+    print(
+        f"[GEN] ✓ Complete: {success} events in {gen_time:.2f}s ({success/gen_time:.0f} evt/sec)"
+    )
 
     store_time = 0.0
     if events_out:
-        print(f"\n[STORE] Writing {success} events + {sum(len(fs) for fs in final_states_out)} particles...")
+        print(
+            f"\n[STORE] Writing {success} events + {sum(len(fs) for fs in final_states_out)} particles..."
+        )
         start_store = datetime.now()
         _flush_batch(events_out, final_states_out)
         store_time = (datetime.now() - start_store).total_seconds()
@@ -840,8 +915,6 @@ def simulate_events(parent_name: str,
         "store_time": store_time,
         "run_timestamp": run_timestamp,
     }
-
-
 
 
 def simulate_chain(
@@ -922,7 +995,9 @@ def simulate_chain(
             if p_mag < 1e-14:
                 continue
 
-            axis = _unit(np.array(parent_p4_fs[1:], dtype=float))  # tau direction in Z frame
+            axis = _unit(
+                np.array(parent_p4_fs[1:], dtype=float)
+            )  # tau direction in Z frame
             cos_theta = float(np.dot(p_pi_rf / p_mag, axis))
             cos_theta = max(-1.0, min(1.0, cos_theta))
 
@@ -940,7 +1015,13 @@ def simulate_chain(
         event_row = (parent_name, decay_mode, parent_mass, run_timestamp, 1.0, 1.0)
 
         fs_rows = [
-            (fs["name"], float(fs["p4"][1]), float(fs["p4"][2]), float(fs["p4"][3]), float(fs["p4"][0]))
+            (
+                fs["name"],
+                float(fs["p4"][1]),
+                float(fs["p4"][2]),
+                float(fs["p4"][3]),
+                float(fs["p4"][0]),
+            )
             for fs in final_states
         ]
 
@@ -975,4 +1056,3 @@ def simulate_chain(
         "tau_pion_cos_theta": all_tau_pion_cos,
         "tau_pion_by_charge": tau_pion_by_charge,
     }
-

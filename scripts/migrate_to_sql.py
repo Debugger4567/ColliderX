@@ -6,23 +6,36 @@ def main():
     conn = get_conn()
     cur = conn.cursor()
 
-    particles_df = pd.read_csv('data/particles.csv')
-    decays_df = pd.read_csv('data/decays.csv')
+    particles_df = pd.read_csv("data/particles.csv")
+    decays_df = pd.read_csv("data/decays.csv")
 
-    decays_df = decays_df.rename(columns={
-        "PDG ID": "pdg_id",
-        "Decay mode": "decay_mode",
-        "Branching fraction": "branching_fraction",
-    })
+    decays_df = decays_df.rename(
+        columns={
+            "PDG ID": "pdg_id",
+            "Decay mode": "decay_mode",
+            "Branching fraction": "branching_fraction",
+        }
+    )
     decays_df = decays_df.loc[:, ["pdg_id", "decay_mode", "branching_fraction"]]
 
     cur.execute("TRUNCATE TABLE decays RESTART IDENTITY")
     cur.execute("TRUNCATE TABLE particles RESTART IDENTITY")
 
     particle_cols = [
-        "PDG ID", "Name", "Symbol", "Mass (MeV/c^2)", "Charge (e)", "Spin",
-        "Baryon Number", "Le", "Lmu", "Ltau", "Strangeness", "Charm",
-        "Bottomness", "Topness",
+        "PDG ID",
+        "Name",
+        "Symbol",
+        "Mass (MeV/c^2)",
+        "Charge (e)",
+        "Spin",
+        "Baryon Number",
+        "Le",
+        "Lmu",
+        "Ltau",
+        "Strangeness",
+        "Charm",
+        "Bottomness",
+        "Topness",
     ]
 
     for row in particles_df.to_dict(orient="records"):

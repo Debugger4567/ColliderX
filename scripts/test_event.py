@@ -1,5 +1,6 @@
 from physics.collision import simulate_events
 
+
 def main():
     result = simulate_events(
         parent_name="Higgs",
@@ -7,6 +8,7 @@ def main():
         seed=42,
     )
     print(result)
+
 
 if __name__ == "__main__":
     main()

@@ -6,6 +6,7 @@ Example: (13, (-11, -12, 14)) for μ⁻ → e⁻ ν̄ₑ νμ
 
 No strings. No ambiguity. No magic.
 """
+
 from .flat import FlatMatrixElement
 from .weak_va import WeakVAMatrixElement
 from .scalar_2body import ScalarTwoBodyMatrixElement
@@ -19,12 +20,12 @@ _REGISTRY: dict = {}
 def register(parent_pdg: int, daughters: tuple, model):
     """
     Register a matrix element for a decay channel.
-    
+
     Args:
         parent_pdg: Parent particle PDG ID
         daughters: Tuple of daughter PDG IDs (sorted)
         model: MatrixElement instance
-        
+
     Example:
         >>> register(13, (-11, -12, 14), WeakVAMatrixElement())
     """
@@ -35,10 +36,10 @@ def register(parent_pdg: int, daughters: tuple, model):
 def get_matrix_element(decay_key):
     """
     Resolve matrix element for a decay.
-    
+
     Args:
         decay_key: (parent_pdg, tuple(sorted(daughter_pdgs)))
-        
+
     Returns:
         MatrixElement instance (fallback: FlatMatrixElement)
     """
@@ -79,15 +80,15 @@ register(23, (-13, 13), ZToLeptonsMatrixElement())
 # PDG: Z=23, τ⁻=15, τ⁺=-15
 register(23, (-15, 15), ZToLeptonsMatrixElement())
 
-# τ⁻ → π⁻ ντ  
+# τ⁻ → π⁻ ντ
 # (PDG: τ⁻=15, π⁻=-211, ντ=16)
 register(15, (-211, 16), TauPionHelicityMatrixElement())
 
-# τ⁺ → π⁺ ν̄τ  
+# τ⁺ → π⁺ ν̄τ
 # (PDG: τ⁺=-15, π⁺=211, ν̄τ=-16)
 register(-15, (-16, 211), TauPionHelicityMatrixElement())
 
-#neutron beta decay: n → p e⁻ ν̄ₑ
-#key must match sorted daugther PDGs from collision.py
-#PDG: n=2112, p=2212, e⁻=11, ν̄ₑ=-12
+# neutron beta decay: n → p e⁻ ν̄ₑ
+# key must match sorted daugther PDGs from collision.py
+# PDG: n=2112, p=2212, e⁻=11, ν̄ₑ=-12
 register(2112, (-12, 11, 2212), WeakVAMatrixElement())

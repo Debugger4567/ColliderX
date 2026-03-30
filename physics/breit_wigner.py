@@ -1,11 +1,12 @@
 import numpy as np
 
+
 def sample_relativistic_bw(
-        m0: float,
-        gamma: float, 
-        rng: np.random.Generator,
-        m_min: float | None = None,
-        m_max: float | None = None,
+    m0: float,
+    gamma: float,
+    rng: np.random.Generator,
+    m_min: float | None = None,
+    m_max: float | None = None,
 ):
     """
     Relativistic Breit–Wigner sampling (MeV units):
@@ -21,13 +22,13 @@ def sample_relativistic_bw(
     -------
     float              Sampled mass (MeV)
     """
-    # Use standard tricK: sample m^2 via Cauchy-like variable 
+    # Use standard tricK: sample m^2 via Cauchy-like variable
     while True:
         # sameple s = m^2
-        y=rng.standard_cauchy()
-        s = m0*m0 + m0*gamma*y
+        y = rng.standard_cauchy()
+        s = m0 * m0 + m0 * gamma * y
 
-        if s <=0:
+        if s <= 0:
             continue
 
         m = np.sqrt(s)

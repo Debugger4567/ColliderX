@@ -1,4 +1,5 @@
-from.base import MatrixElement
+from .base import MatrixElement
+
 
 class ScalarTwoBodyMatrixElement(MatrixElement):
     """
@@ -7,6 +8,7 @@ class ScalarTwoBodyMatrixElement(MatrixElement):
         π0 → γ γ
         H → γ γ (toy)
     """
+
     name = "Scalar → 2-body"
     description = "Constant |M|^2 for scalar two-body decays"
 
@@ -14,6 +16,4 @@ class ScalarTwoBodyMatrixElement(MatrixElement):
         self.coupling = coupling
 
     def M2(self, parent_p4, daughter_p4s, context=None) -> float:
-        return self.coupling ** 2
-    
-    
+        return self.coupling**2

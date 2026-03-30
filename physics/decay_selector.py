@@ -4,9 +4,11 @@ import numpy as np
 from typing import List, Tuple, Optional, Dict
 from db import get_conn
 
+
 def _conn():
     # Alias to avoid refactor churn; uses shared db.get_conn (psycopg2)
     return get_conn()
+
 
 # Simple in-memory cache: pdg_id -> List[(mode_text, br)]
 _CACHE: Dict[int, List[Tuple[str, float]]] = {}
@@ -26,7 +28,6 @@ _CANON = {
     "τ−": "Tau",
     "τ-": "Tau",
     "τ+": "Antitau",
-    
     # Neutrinos
     "νe": "Electron neutrino",
     "ν̄e": "Electron antineutrino",
@@ -34,7 +35,6 @@ _CANON = {
     "ν̄μ": "Muon antineutrino",
     "ντ": "Tau neutrino",
     "ν̄τ": "Tau antineutrino",
-    
     # Quarks
     "u": "Up quark",
     "ū": "AntiUp quark",
@@ -49,7 +49,6 @@ _CANON = {
     "bbar": "AntiBottom quark",
     "t": "Top quark",
     "t̄": "AntiTop quark",
-    
     # Gauge bosons
     "γ": "Photon",
     "gamma": "Photon",
@@ -61,13 +60,11 @@ _CANON = {
     "W-": "W- boson",
     "H0": "Higgs boson",
     "H": "Higgs boson",
-    
     # Baryons
     "p": "Proton",
     "p̄": "Antiproton",
     "n": "Neutron",
     "n̄": "Antineutron",
-    
     # Mesons
     "π+": "Pion+",
     "π−": "Pion-",
@@ -93,13 +90,13 @@ def _canonicalize_mode(mode_text: str) -> List[str]:
     # Remove parenthetical notes and collapse spaces
     mode = re.sub(r"\s*\(.*?\)\s*", " ", mode_text).strip()
     mode = re.sub(r"\s+", " ", mode)
-    
+
     if not mode or mode.lower().startswith("stable"):
         return []
-    
+
     tokens = mode.split(" ")
     canonicalized = []
-    
+
     for token in tokens:
         # Try direct lookup in canon map
         if token in _CANON:
@@ -107,7 +104,7 @@ def _canonicalize_mode(mode_text: str) -> List[str]:
         else:
             # If not found, keep original (might be a full name already)
             canonicalized.append(token)
-    
+
     return canonicalized
 
 
@@ -156,7 +153,9 @@ def choose_decay_mode(pdg_id: int, rng=None) -> str:
     return rng.choice(names, p=norm)
 
 
-def choose_decay_daughters(pdg_id: int, rng: Optional[random.Random] = None) -> List[str]:
+def choose_decay_daughters(
+    pdg_id: int, rng: Optional[random.Random] = None
+) -> List[str]:
     """
     Pick a decay and return canonicalized daughter particle names from your DB.
     Examples:
@@ -176,11 +175,11 @@ def get_decay_products(pdg_id: int, decay_mode: str) -> List[str]:
     Uses in-memory cache to avoid repeated DB queries.
     """
     key = (pdg_id, decay_mode)
-    
+
     # Check cache first
     if key in _DECAY_PRODUCTS_CACHE:
         return _DECAY_PRODUCTS_CACHE[key]
-    
+
     # Query DB only on cache miss
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -195,16 +194,14 @@ def get_decay_products(pdg_id: int, decay_mode: str) -> List[str]:
         rows = cur.fetchall()
 
     if not rows:
-        raise RuntimeError(
-            f"No decay products for PDG {pdg_id} mode '{decay_mode}'"
-        )
+        raise RuntimeError(f"No decay products for PDG {pdg_id} mode '{decay_mode}'")
 
     indices = [r[0] for r in rows]
     if len(indices) != len(set(indices)):
         raise ValueError("Duplicate product_index detected")
 
     products = [r[1] for r in rows]
-    
+
     # Store in cache
     _DECAY_PRODUCTS_CACHE[key] = products
     return products

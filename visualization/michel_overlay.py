@@ -5,8 +5,10 @@ from db import get_conn
 M_MU = 105.66
 N = 200_000
 
+
 def get_db_connection():
     return get_conn()
+
 
 def load_real():
     conn = get_conn()
@@ -22,11 +24,13 @@ def load_real():
     conn.close()
     return np.array([r[0] for r in rows])
 
+
 def generate_flat():
     rng = np.random.default_rng(0)
-    E = rng.random((N,3))
-    E /= E.sum(axis=1)[:,None]
-    return E[:,0] * (M_MU / 2)
+    E = rng.random((N, 3))
+    E /= E.sum(axis=1)[:, None]
+    return E[:, 0] * (M_MU / 2)
+
 
 def main():
     E_real = load_real()
@@ -36,10 +40,16 @@ def main():
     E_flat = generate_flat()
     x_flat = 2 * E_flat / M_MU
 
-    plt.figure(figsize=(7,5))
+    plt.figure(figsize=(7, 5))
     plt.hist(x_flat, bins=60, density=True, alpha=0.6, label="Flat phase space")
-    plt.hist(x_real, bins=60, density=True, histtype="step", linewidth=2,
-             label="ColliderX (V–A)")
+    plt.hist(
+        x_real,
+        bins=60,
+        density=True,
+        histtype="step",
+        linewidth=2,
+        label="ColliderX (V–A)",
+    )
     plt.xlabel(r"$x = 2E_e/m_\mu$")
     plt.ylabel("Normalized counts")
     plt.title("Michel spectrum: dynamics vs kinematics")
@@ -47,6 +57,7 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.show()
+
 
 if __name__ == "__main__":
     main()

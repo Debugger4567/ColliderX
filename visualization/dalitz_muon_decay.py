@@ -2,9 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from db import get_conn
 
+
 # ---------- DB CONNECTION ----------
 def get_db_connection():
     return get_conn()
+
 
 # ---------- LOAD EVENTS ----------
 def load_muon_events():
@@ -32,7 +34,7 @@ def load_muon_events():
     # Group by event
     events = {}
     weights = {}
-    
+
     for event_id, particle, E, px, py, pz, weight in rows:
         if event_id not in events:
             events[event_id] = {}
@@ -40,6 +42,7 @@ def load_muon_events():
         weights[event_id] = weight
 
     return events, weights
+
 
 # ---------- MAIN ----------
 def main():
@@ -68,10 +71,10 @@ def main():
 
         E_e = particles["Electron"][0]
         E_nubar = particles["Electron antineutrino"][0]
-        
+
         xe = 2 * E_e / m_mu
         xn = 2 * E_nubar / m_mu
-        
+
         x_e.append(xe)
         x_nubar.append(xn)
         W.append(weights[event_id])
@@ -92,7 +95,9 @@ def main():
     # ---------- PLOT ----------
     plt.figure(figsize=(8, 7))
     bins = 60
-    h = plt.hist2d(x_e, x_nubar, bins=bins, weights=W, cmap='viridis', range=[[0, 1], [0, 1]])
+    h = plt.hist2d(
+        x_e, x_nubar, bins=bins, weights=W, cmap="viridis", range=[[0, 1], [0, 1]]
+    )
 
     plt.xlabel(r"$x_e = 2E_e / m_\mu$", fontsize=12)
     plt.ylabel(r"$x_{\bar{\nu}_e} = 2E_{\bar{\nu}_e} / m_\mu$", fontsize=12)
@@ -102,7 +107,9 @@ def main():
     # Kinematic boundary inside [0,1]^2: x_e + x_nubar = 1 (x_{νμ} = 1)
     x_boundary = np.linspace(0, 1, 200)
     y_boundary = 1 - x_boundary
-    plt.plot(x_boundary, y_boundary, 'r--', linewidth=2, label=r'$x_e + x_{\bar{\nu}_e} = 1$')
+    plt.plot(
+        x_boundary, y_boundary, "r--", linewidth=2, label=r"$x_e + x_{\bar{\nu}_e} = 1$"
+    )
 
     plt.legend(fontsize=10)
     plt.xlim(0, 1)
@@ -110,6 +117,7 @@ def main():
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.show()
+
 
 if __name__ == "__main__":
     main()

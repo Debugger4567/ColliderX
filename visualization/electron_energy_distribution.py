@@ -1,4 +1,4 @@
-import numpy as np 
+import numpy as np
 import matplotlib.pyplot as plt
 from db import get_conn
 
@@ -16,7 +16,7 @@ data = cur.fetchall()
 E = np.array([row[0] for row in data])
 W = np.array([row[1] for row in data])
 
-# Histogram 
+# Histogram
 bins = 100  # smoother
 hist, edges = np.histogram(E, bins=bins, weights=W, density=True)
 centres = 0.5 * (edges[:-1] + edges[1:])
@@ -28,7 +28,7 @@ m_mu = 105.658
 Emax = m_mu / 2
 
 x = centres / Emax
-michel = x**2 * (3 - 2*x)
+michel = x**2 * (3 - 2 * x)
 michel[x > 1] = 0
 michel /= np.trapezoid(michel, centres)
 

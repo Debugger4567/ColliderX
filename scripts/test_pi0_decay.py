@@ -1,11 +1,11 @@
 import sys, os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from physics.particles import Particle
 from physics.decay_selector import get_decay_products
 from physics.decays import decay_particle
 import numpy as np
-
 
 
 def main():
@@ -35,7 +35,6 @@ def main():
     print(f"Invariant mass = {inv_mass:.4f} MeV")
     print(f"Expected mass  = {pi0.mass:.4f} MeV")
 
+
 if __name__ == "__main__":
     main()
-
-

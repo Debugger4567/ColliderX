@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 def apply_detector(final_states: list[dict]) -> dict:
     """
     Minimal detector model:
@@ -7,10 +8,17 @@ def apply_detector(final_states: list[dict]) -> dict:
     - Everything else is visible
     - MET is computed from invisible transverse momentum
     """
-    invisible_names = {"Electron neutrino", "Electron antineutrino", "Muon neutrino", "Muon antineutrino", "Tau neutrino", "Tau antineutrino"}
+    invisible_names = {
+        "Electron neutrino",
+        "Electron antineutrino",
+        "Muon neutrino",
+        "Muon antineutrino",
+        "Tau neutrino",
+        "Tau antineutrino",
+    }
 
     visible = []
-    met_px  = 0.0
+    met_px = 0.0
     met_py = 0.0
 
     for fs in final_states:
@@ -25,9 +33,9 @@ def apply_detector(final_states: list[dict]) -> dict:
     met_mag = (met_px**2 + met_py**2) ** 0.5
 
     return {
-        "visible": visible, 
+        "visible": visible,
         "met_px": met_px,
         "met_py": met_py,
         "visible_count": len(visible),
-        "invisible_count": len(final_states) - len(visible) 
+        "invisible_count": len(final_states) - len(visible),
     }

@@ -8,7 +8,6 @@ All public APIs fail fast with a clear migration message.
 
 from typing import Any
 
-
 _MIGRATION_MESSAGE = (
     "physics.event_generator is archived and disabled. "
     "Use physics.collision.simulate_events instead."

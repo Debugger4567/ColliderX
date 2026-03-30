@@ -31,8 +31,7 @@ class EventDB:
     def create_table(self):
         """Create the 'events' table with conservation tracking."""
         with self.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS events (
                     id SERIAL PRIMARY KEY,
                     event_type TEXT,
@@ -43,8 +42,7 @@ class EventDB:
                     weight DOUBLE PRECISION DEFAULT 1.0,
                     timestamp TEXT
                 )
-                """
-            )
+                """)
 
     def store_event(
         self,
@@ -58,7 +56,7 @@ class EventDB:
     ):
         """
         Store a single event in the database.
-        
+
         Args:
             parent_name: Name of parent particle (maps to DB 'parent')
             decay_mode: Decay channel string (e.g., "π0 → γ γ")
@@ -104,7 +102,7 @@ class EventDB:
                 cur.execute(
                     "SELECT id, parent, decay_mode, energy, event_type, weight, timestamp "
                     "FROM events ORDER BY id DESC LIMIT %s",
-                    (limit,)
+                    (limit,),
                 )
                 columns = [desc[0] for desc in cur.description]
                 return [dict(zip(columns, row)) for row in cur.fetchall()]
@@ -118,7 +116,7 @@ class EventDB:
 
                 cur.execute("SELECT AVG(weight) FROM events")
                 avg_weight = cur.fetchone()[0] or 1.0
-            
+
         return {
             "total_events": total,
             "average_weight": avg_weight,
