@@ -2,8 +2,9 @@
 Database schema inspector for ColliderX.
 Extracts table structures, keys, indexes, and constraints.
 """
-import psycopg2
 from db import get_conn
+
+conn = get_conn()
 
 
 def get_table_schema(table_name: str):

@@ -1,8 +1,8 @@
 import numpy as np 
 import matplotlib.pyplot as plt
-import psycopg2
+from db import get_conn
 
-conn = psycopg2.connect("dbname=colliderx user=postgres password=Soccer@21")
+conn = get_conn()
 cur = conn.cursor()
 
 cur.execute("""

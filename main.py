@@ -1,42 +1,31 @@
-# main.py
-from physics.collision import MonteCarloCollider
-from physics.particles import Particles
-from physics.decays import Decays
+import argparse
+from physics.collision import simulate_events
 
-'''
-def main():
-    collider = MonteCarloCollider()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="ColliderX event simulation entrypoint")
+    parser.add_argument("--parent", default="Z boson", help='Parent particle name (default: "Z boson")')
+    parser.add_argument("--n-events", type=int, default=1000, help="Number of events to simulate")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed")
+    parser.add_argument("--afb", type=float, default=0.0, help="Forward-backward asymmetry parameter")
+    parser.add_argument("--fixed-decay-mode", default=None, help="Optional fixed decay mode")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logs")
+    return parser.parse_args()
 
-    # Example: proton-proton collision at 14 TeV
-    stable_products = collider.collide("p", "p", energy=14_000_000)
 
-    print("\n=== Final Detector Output ===")
-    for p in stable_products:
-        print(f"- {p[0]} ({p[1]})")
+
+def main() -> None:
+    args = parse_args()
+    result = simulate_events(
+        parent_name=args.parent, 
+        n_events = args.n_events, 
+        seed=args.seed,
+        afb=args.afb,
+        fixed_decay_mode=args.fixed_decay_mode, 
+        verbose=args.verbose,
+    )
+    print(result)
+
 
 
 if __name__ == "__main__":
     main()
-'''
-
-
-'''
-collider = MonteCarloCollider(default_energy=8_000_000)
-
-# Run 10 million collisions (FAST with NumPy)
-results = collider.collide("p", "p", n=10_000_000, verbose=True)
-
-# Filter just Higgs events
-higgs_hits = results[results == "higgs"]
-print(f"Higgs events found: {len(higgs_hits)}")
-
-'''
-
-from physics.kinematics import FourVector
-
-p1 = FourVector(7000, 0, 0, 7000)   # ~massless particle moving +z
-p2 = FourVector(7000, 0, 0, -7000)  # ~massless particle moving -z
-
-total = p1 + p2
-print("Total:", total)
-print("Invariant mass √s =", total.mass())

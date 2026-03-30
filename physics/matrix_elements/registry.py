@@ -57,7 +57,7 @@ register(13, (-11, -12, 14), WeakVAMatrixElement())
 
 # Antimuon decay: μ⁺ → e⁺ νₑ ν̄μ
 # PDG IDs: μ⁺=-13, e⁺=-11, νₑ=12, ν̄μ=-14
-register(-13, (11, 12, -14), WeakVAMatrixElement())
+register(-13, (-14, 11, 12), WeakVAMatrixElement())
 
 # π0 → γ γ
 # PDG: π0 = 111, γ = 22
@@ -86,3 +86,8 @@ register(15, (-211, 16), TauPionHelicityMatrixElement())
 # τ⁺ → π⁺ ν̄τ  
 # (PDG: τ⁺=-15, π⁺=211, ν̄τ=-16)
 register(-15, (-16, 211), TauPionHelicityMatrixElement())
+
+#neutron beta decay: n → p e⁻ ν̄ₑ
+#key must match sorted daugther PDGs from collision.py
+#PDG: n=2112, p=2212, e⁻=11, ν̄ₑ=-12
+register(2112, (-12, 11, 2212), WeakVAMatrixElement())

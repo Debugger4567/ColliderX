@@ -28,7 +28,7 @@ def _boost_to_rest_frame(p4_to_boost: tuple, parent_p4: tuple) -> np.ndarray:
     beta2 = float(np.dot(beta, beta))
     if beta2 >= 1.0:
         _, px, py, pz = p4_to_boost
-        return np.array([[px, py, pz]], dtype=float)
+        return np.array([px, py, pz], dtype=float)
 
     gamma = 1.0 / math.sqrt(1.0 - beta2)
 
@@ -50,7 +50,7 @@ def compute_tau_helicity(tau_p4: tuple, parent_p4: tuple, rng: np.random.Generat
     """
 
     p_tau_rf = _boost_to_rest_frame(tau_p4, parent_p4)
-    p_mag = float(np.lingalg.norm(p_tau_rf))
+    p_mag = float(np.linalg.norm(p_tau_rf))
     
     if p_mag < 1e-10:
         return SpinState.unpolarized()  
@@ -63,20 +63,25 @@ def compute_tau_helicity(tau_p4: tuple, parent_p4: tuple, rng: np.random.Generat
     cos_theta = float(np.clip(p_tau_rf[2] / p_mag, -1.0, 1.0))
 
 
-    # V-A helicity assignment:
-    # Note: the common angular envelope cancels in left/right ratio.
-    _angular = (1.0 + cos_theta**2) + 2.0 * afb * cos_theta
-    _ = _angular #reserved for fututre branch-dependant EW coupling treatment
+    # Z-pole inspired tau polarization model:
+    #   P_tau(c) = - [ A_tau(1+c^2) + 2 A_e c ] / [ (1+c^2) + 2 A_e A_tau c ]
+    # where c = cos(theta_tau).
+    # Helicity convention here: left-handed tau- => h = -1.
+    A_tau = 0.1465
+    A_e = afb if abs(afb) > 1e-12 else 0.1516
+    A_e = float(np.clip(A_e, -0.95, 0.95))
 
-    w_left = max(0.0, (1.0 - cos_theta) ** 2)
-    w_right = max(0.0, (1.0 + cos_theta) ** 2)
-    w_total = w_left + w_right
-
-    if w_total < 1e-14:
-        helicity = float(rng.choice([-1.0, 1.0]))
+    numerator = A_tau * (1.0 + cos_theta**2) + 2.0 * A_e * cos_theta
+    denominator = (1.0 + cos_theta**2) + 2.0 * A_e * A_tau * cos_theta
+    if abs(denominator) < 1e-14:
+        P_tau = 0.0
     else:
-        p_left = w_left / w_total 
-        helicity =  -1.0 if rng.random() < p_left else 1.0
+        P_tau = -numerator / denominator
+
+    P_tau = float(np.clip(P_tau, -1.0, 1.0))
+    p_left = 0.5 * (1.0 - P_tau)
+    p_left = float(np.clip(p_left, 0.0, 1.0))
+    helicity = -1.0 if rng.random() < p_left else 1.0
 
     return SpinState(helicity=helicity, quantization_axis=axis)
 

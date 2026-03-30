@@ -1,14 +1,8 @@
 import numpy as np
-import psycopg2
+from db import get_conn
 
-def get_conn():
-    return psycopg2.connect(
-        dbname="colliderx",
-        user="postgres",
-        password="Soccer@21",
-        host="localhost",
-        port=5432,
-    )
+def get_db_connection():
+    return get_conn()
 
 def main():
     conn = get_conn()

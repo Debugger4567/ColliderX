@@ -1,18 +1,12 @@
-import psycopg2
 import numpy as np
 import matplotlib.pyplot as plt
+from db import get_conn
 
 M_MU = 105.66
 N = 200_000
 
-def get_conn():
-    return psycopg2.connect(
-        dbname="colliderx",
-        user="postgres",
-        password="Soccer@21",
-        host="localhost",
-        port=5432,
-    )
+def get_db_connection():
+    return get_conn()
 
 def load_real():
     conn = get_conn()

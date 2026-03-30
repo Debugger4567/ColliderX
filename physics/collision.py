@@ -1,6 +1,14 @@
 import os
 import math
 import numpy as np
+from .helicity import _boost_to_rest_frame  # uses p4_to_boost, rest_frame_p4 -> spatial (3,)
+
+def _unit(v: np.ndarray) -> np.ndarray:
+    n = float(np.linalg.norm(v))
+    if n < 1e-14:
+        return np.array([0.0, 0.0, 1.0], dtype=float)
+    return v / n
+
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +18,7 @@ from .decay_selector import choose_decay_mode, get_decay_modes, get_decay_produc
 from .phase_space import generate_three_body_decay
 from db import get_conn
 from .breit_wigner import sample_relativistic_bw  # NEW
+from .detector import apply_detector
 
 def _conn():
     return get_conn()
@@ -133,6 +142,16 @@ def _reorder_daughters_for_matrix_element(
     # Fallback: return original order
     # WARNING: Only FlatMatrixElement tolerates ambiguous ordering.
     # If you add a physics-sensitive ME that doesn't enforce ordering, it will silently fail.
+
+    #neutron beta decay: n(2112) -> p(2212) + e-(11) + nu_e_bar(-12)
+    if parent_pdg == 2112 and len(daughter_names) == 3:
+        i_lep = next((i for i, pdg in enumerate(daughter_pdgs) if pdg in {11, 13, 15}), None)
+        i_anu = next((i for i, pdg in enumerate(daughter_pdgs) if pdg in {-12, -14, -16}), None)
+        i_p = next((i for i, pdg in enumerate(daughter_pdgs) if pdg in {2212}), None)
+
+        if None not in (i_lep, i_anu, i_p):
+            return [p4s[i_lep], p4s[i_anu], p4s[i_p]]
+
     return p4s
 
 
@@ -374,7 +393,14 @@ def _simulate_event_inmemory(parent_name: str,
         (name, float(fv[1]), float(fv[2]), float(fv[3]), float(fv[0]))
         for name, fv in zip(daughters, p4s_rest)
     ]
-    return ("ACCEPTED", (event_row, final_state_rows))
+
+    detector_input = [
+        {"name": name, "p4": (float(fv[0]), float(fv[1]), float(fv[2]), float(fv[3]))}
+        for name, fv in zip(daughters, p4s_rest)
+    ]
+    detector = apply_detector(detector_input)
+
+    return ("ACCEPTED", (event_row, final_state_rows, detector))
 
 
 def _flush_batch(event_rows, final_state_groups, batch_size: int = 5000):
@@ -451,6 +477,43 @@ def _assign_daughter_spins(daughter_names: list, p4s: list, parent_pdg: int, rng
     TAU_PDGS = {15, -15}
     spins = []
 
+    if parent_pdg == 23:
+        tau_minus_index = None
+        tau_plus_index = None
+        for index, name in enumerate(daughter_names):
+            pdg = get_pdg_id_cached(name)
+            if pdg == 15:
+                tau_minus_index = index
+            elif pdg == -15:
+                tau_plus_index = index
+
+        if tau_minus_index is not None and tau_plus_index is not None:
+            tau_minus_spin = compute_tau_helicity(
+                tau_p4=p4s[tau_minus_index],
+                parent_p4=parent_p4,
+                rng=rng,
+                afb=afb,
+            )
+
+            tau_plus_axis_rf = _boost_to_rest_frame(p4s[tau_plus_index], parent_p4)
+            tau_plus_axis = _unit(tau_plus_axis_rf)
+            tau_plus_spin = SpinState(
+                helicity=-tau_minus_spin.helicity,
+                quantization_axis=tau_plus_axis,
+            )
+
+            for index, name in enumerate(daughter_names):
+                pdg = get_pdg_id_cached(name)
+                if index == tau_minus_index:
+                    spins.append(tau_minus_spin)
+                elif index == tau_plus_index:
+                    spins.append(tau_plus_spin)
+                elif pdg in TAU_PDGS:
+                    spins.append(SpinState.unpolarized())
+                else:
+                    spins.append(SpinState.unpolarized())
+            return spins
+
     for name, p4 in zip(daughter_names, p4s):
         pdg = get_pdg_id_cached(name)
 
@@ -475,6 +538,8 @@ def _decay_particle_recursive(
     depth: int = 0,
     max_depth: int = 4,
     afb: float = 0.0,
+    force_tau_pion_only: bool = False,
+    fixed_decay_mode: str | None = None,
 ) -> list:
     from .spin import SpinState
     from .matrix_elements import get_matrix_element
@@ -498,7 +563,14 @@ def _decay_particle_recursive(
     if not modes:
         return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
 
-    decay_mode = choose_decay_mode(pdg, rng)
+    if depth == 0 and fixed_decay_mode is not None:
+        decay_mode = fixed_decay_mode
+    elif force_tau_pion_only and pdg == 15:
+        decay_mode = "π⁻ ντ"
+    elif force_tau_pion_only and pdg == -15:
+        decay_mode = "π⁺ ν̄τ"
+    else:
+        decay_mode = choose_decay_mode(pdg, rng)
     if decay_mode == "stable":
         return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
 
@@ -517,22 +589,69 @@ def _decay_particle_recursive(
     if spin is None:
         spin = SpinState.unpolarized()
 
-    try:
-        p4s, ps_weight = _generate_decay_fourvectors(
-            parent_mass,
-            daughters,
-            rng,
-            apply_weights=False,
-            parent_pdg=pdg,
-            afb=afb,
-        )
-    except Exception:
-        return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
-
     me = get_matrix_element(decay_key)
-    ordered = _reorder_daughters_for_matrix_element(daughters, p4s, pdg)
     context = {"spin_state": spin, "afb": afb}
-    M2 = float(me.M2((parent_mass, 0.0, 0.0, 0.0), ordered, context))
+
+    # For polarized tau 2-body decays, sample directions with M2 accept-reject.
+    # This is required to imprint the helicity-dependent angular shape.
+    is_polarized_tau_2body = (
+        pdg in (15, -15)
+        and len(daughters) == 2
+        and spin is not None
+        and spin.is_polarized
+    )
+
+    p4s = None
+    ps_weight = 1.0
+    M2 = 1.0
+
+    if is_polarized_tau_2body:
+        accepted = False
+        m2_max = 2.0  # for M2 = 1 + h*cos(theta), with h in {-1,+1}
+        for _ in range(32):
+            try:
+                cand_p4s, cand_ps_weight = _generate_decay_fourvectors(
+                    parent_mass,
+                    daughters,
+                    rng,
+                    apply_weights=False,
+                    parent_pdg=pdg,
+                    afb=afb,
+                )
+            except Exception:
+                return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+            ordered = _reorder_daughters_for_matrix_element(daughters, cand_p4s, pdg)
+            cand_M2 = float(me.M2((parent_mass, 0.0, 0.0, 0.0), ordered, context))
+            accept_prob = min(1.0, max(0.0, cand_M2 / m2_max))
+            if rng.random() <= accept_prob:
+                p4s = cand_p4s
+                ps_weight = cand_ps_weight
+                M2 = cand_M2
+                accepted = True
+                break
+
+        if not accepted:
+            # Numerical fallback: use one sampled candidate even if A/R was unlucky.
+            p4s = cand_p4s
+            ps_weight = cand_ps_weight
+            M2 = cand_M2
+    else:
+        try:
+            p4s, ps_weight = _generate_decay_fourvectors(
+                parent_mass,
+                daughters,
+                rng,
+                apply_weights=False,
+                parent_pdg=pdg,
+                afb=afb,
+            )
+        except Exception:
+            return [{"name": particle_name, "p4": p4, "depth": depth, "parent": None}]
+
+        ordered = _reorder_daughters_for_matrix_element(daughters, p4s, pdg)
+        M2 = float(me.M2((parent_mass, 0.0, 0.0, 0.0), ordered, context))
+
     _ = (M2, ps_weight)
 
     daughter_spins = _assign_daughter_spins(
@@ -560,8 +679,24 @@ def _decay_particle_recursive(
     final_states = []
     for name, bp4, dspin in zip(daughters, boosted_p4s, daughter_spins):
         children = _decay_particle_recursive(
-            name, bp4, dspin, rng, depth + 1, max_depth, afb=afb
+            name,
+            bp4,
+            dspin,
+            rng,
+            depth + 1,
+            max_depth,
+            afb=afb,
+            force_tau_pion_only=force_tau_pion_only,
+            fixed_decay_mode=fixed_decay_mode,
         )
+
+        # Attach immediate parent truth metadata (needed for tau-rest-frame observables)
+        for child in children:
+            if child.get("parent") is None:
+                child["parent"] = particle_name
+                child["parent_p4"] = p4
+                child["parent_pdg"] = pdg
+
         final_states.extend(children)
 
     return final_states
@@ -663,7 +798,7 @@ def simulate_events(parent_name: str,
         )
 
         if status == "ACCEPTED":
-            event_row, final_state_rows = payload
+            event_row, final_state_rows, detector = payload
             events_out.append(event_row)
             final_states_out.append(final_state_rows)
             success += 1
@@ -716,6 +851,7 @@ def simulate_chain(
     afb: float = 0.0,
     fixed_decay_mode: str | None = None,
     verbose: bool = False,
+    force_tau_pion_only: bool = False,
 ) -> dict:
     rng = np.random.default_rng(seed)
     run_timestamp = datetime.utcnow().isoformat()
@@ -742,6 +878,9 @@ def simulate_chain(
     start = datetime.now()
     parent_spin = SpinState.unpolarized()
 
+    all_tau_pion_cos = []
+    tau_pion_by_charge = {"Pion-": [], "Pion+": []}
+
     for i in range(n_events):
         parent_p4 = (parent_mass, 0.0, 0.0, 0.0)
 
@@ -754,6 +893,8 @@ def simulate_chain(
                 depth=0,
                 max_depth=4,
                 afb=afb,
+                force_tau_pion_only=force_tau_pion_only,
+                fixed_decay_mode=fixed_decay_mode,
             )
         except Exception as e:
             if verbose:
@@ -764,6 +905,36 @@ def simulate_chain(
         if not final_states:
             failed += 1
             continue
+
+        # Compute truth-level cos(theta_pi) in tau rest frame
+        for fs in final_states:
+            if fs.get("name") not in {"Pion-", "Pion+"}:
+                continue
+            parent_pdg_fs = fs.get("parent_pdg")
+            if parent_pdg_fs is None or abs(int(parent_pdg_fs)) != 15:
+                continue
+            parent_p4_fs = fs.get("parent_p4")
+            if parent_p4_fs is None:
+                continue
+
+            p_pi_rf = _boost_to_rest_frame(fs["p4"], parent_p4_fs)
+            p_mag = float(np.linalg.norm(p_pi_rf))
+            if p_mag < 1e-14:
+                continue
+
+            axis = _unit(np.array(parent_p4_fs[1:], dtype=float))  # tau direction in Z frame
+            cos_theta = float(np.dot(p_pi_rf / p_mag, axis))
+            cos_theta = max(-1.0, min(1.0, cos_theta))
+
+            pion_name = fs.get("name")
+            if pion_name in tau_pion_by_charge:
+                tau_pion_by_charge[pion_name].append(cos_theta)
+
+            # align both charges to tau- convention
+            if pion_name == "Pion+":
+                cos_theta = -cos_theta
+
+            all_tau_pion_cos.append(cos_theta)
 
         decay_mode = fixed_decay_mode or "chain"
         event_row = (parent_name, decay_mode, parent_mass, run_timestamp, 1.0, 1.0)
@@ -801,5 +972,7 @@ def simulate_chain(
         "gen_time": gen_time,
         "store_time": store_time,
         "run_timestamp": run_timestamp,
+        "tau_pion_cos_theta": all_tau_pion_cos,
+        "tau_pion_by_charge": tau_pion_by_charge,
     }
 

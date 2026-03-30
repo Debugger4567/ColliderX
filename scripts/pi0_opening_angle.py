@@ -10,20 +10,11 @@ This script verifies that prediction by plotting the opening angle histogram.
 A razor-sharp spike at π = success. Anything else = physics bug.
 """
 
-import psycopg2
 import numpy as np
 import matplotlib.pyplot as plt
+from db import get_conn
 
 
-
-def get_conn():
-    return psycopg2.connect(
-        dbname="colliderx",
-        user="postgres",
-        password="Soccer@21",
-        host="localhost",
-        port=5432,
-    )
 
 def load_pi0_events():
     conn = get_conn()
