@@ -6,7 +6,6 @@
 # - Provide deterministic behavior for tests (fixed decay axis) while leaving clear hooks for
 #   future stochastic / phase-space sampling extensions.
 from .kinematics import FourVector
-import math
 
 
 def check_energy_conservation(initial_vectors, final_vectors, tol=1e-6):

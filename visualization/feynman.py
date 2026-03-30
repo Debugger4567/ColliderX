@@ -163,7 +163,6 @@ class _Builder:
                 except Exception:
                     return particle_node
             else:
-                names = [mode_name for mode_name, _, _ in valid_modes]
                 weights = np.array(
                     [branching_fraction for _, branching_fraction, _ in valid_modes],
                     dtype=float,

@@ -12,3 +12,8 @@ colliderx_pg_dump_fixed.sql
 dist/
 build/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/

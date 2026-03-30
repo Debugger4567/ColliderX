@@ -54,12 +54,12 @@ def main():
     else:
         significance = 0.0
 
-    print(f"\n[RESULT] Forward-Backward Asymmetry")
+    print("\n[RESULT] Forward-Backward Asymmetry")
     print(f"  N_forward  = {forward:.1f}")
     print(f"  N_backward = {backward:.1f}")
     print(f"  A_FB       = {A_FB:.6f} ± {sigma_afb:.6f}")
-    print(f"\n[INTERPRETATION] Expected A_FB ≈ 0 (parity symmetric)")
-    print(f"  |A_FB| / σ = {abs(A_FB) / sigma_afb:.2f}σ")
+    print("\n[INTERPRETATION] Expected A_FB ≈ 0 (parity symmetric)")
+    print(f"  |A_FB| / σ = {significance:.2f}σ")
 
 
 if __name__ == "__main__":

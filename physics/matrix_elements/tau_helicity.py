@@ -59,7 +59,7 @@ class TauPionHelicityMatrixElement(MatrixElement):
         if p_mag < 1e-10:
             return 1.0
 
-        ## cosθ = angle between pion momentum and tau spin axis
+        # cosθ = angle between pion momentum and tau spin axis
         cos_theta = float(np.dot(p_pion / p_mag, spin.quantization_axis))
         cos_theta = float(np.clip(cos_theta, -1.0, 1.0))
 

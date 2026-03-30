@@ -9,7 +9,7 @@ Examples:
 
 import argparse
 import csv
-from physics.collision import simulate_events, init_event_db
+from physics.collision import simulate_events
 from db import get_conn
 
 
@@ -149,11 +149,11 @@ def main():
     print(f"Failed events     : {result['failed']}")
     success_rate = (result['success'] / result['total']) if result['total'] > 0 else 0.0
     print(f"Success rate      : {success_rate:.2%}")
-    print(f"\nTiming:")
+    print("\nTiming:")
     print(f"  Generation : {result['gen_time']:.3f}s ({result['success']/result['gen_time']:.0f} evt/sec)")
     print(f"  Storage    : {result['store_time']:.3f}s")
     print(f"  Total      : {result['gen_time'] + result['store_time']:.3f}s")
-    
+
     # Enhanced statistics from DB
     if result['success'] > 0:
         print("\n📊 Physics Summary")
@@ -172,7 +172,7 @@ def main():
             for mode, count in modes:
                 pct = 100 * count / result['success']
                 print(f"  {mode:30s}: {count:6d} ({pct:5.2f}%)")
-            
+
             # Final state particle counts (filtered by current run timestamp)
             cur.execute("""
                 SELECT particle, COUNT(*) as count
@@ -186,10 +186,10 @@ def main():
             print("\nFinal state particles produced:")
             for particle, count in particles:
                 print(f"  {particle:30s}: {count:6d}")
-            
+
             # Energy statistics (filtered by current run timestamp)
             cur.execute("""
-                SELECT 
+                SELECT
                     AVG(E) as avg_E,
                     MIN(E) as min_E,
                     MAX(E) as max_E,
@@ -199,12 +199,12 @@ def main():
                 WHERE e.parent = %s AND e.timestamp = %s
             """, (args.particle, result['run_timestamp']))
             avg_E, min_E, max_E, std_E = cur.fetchone()
-            print(f"\nDaughter energy distribution (MeV):")
+            print("\nDaughter energy distribution (MeV):")
             print(f"  Average  : {avg_E:.3f}")
             print(f"  Std Dev  : {std_E:.3f}")
             print(f"  Min      : {min_E:.3f}")
             print(f"  Max      : {max_E:.3f}")
-    
+
     print("=" * 60 + "\n")
 
     if args.output:

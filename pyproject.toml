@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "colliderx"
+version = "0.1.0"
+description = "Local-first particle decay simulator"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  {name = "Vatsal Jaiswal"},
+]
+license = {file = "LICENSE"}
+dependencies = [
+  "numpy",
+  "pandas",
+  "matplotlib",
+  "scipy",
+]
+
+[project.urls]
+Homepage = "https://github.com/Debugger4567/ColliderX"
+
+[project.scripts]
+colliderx = "main:main"
+
+[tool.setuptools]
+py-modules = ["db", "main", "monte_carlo"]
+
+[tool.setuptools.packages.find]
+include = ["physics*", "visualization*", "scripts*"]

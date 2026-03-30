@@ -1,0 +1,4 @@
+[flake8]
+exclude = .venv,.git,__pycache__,artifacts
+max-line-length = 140
+extend-ignore = E402

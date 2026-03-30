@@ -30,7 +30,12 @@ Emax = m_mu / 2
 x = centres / Emax
 michel = x**2 * (3 - 2 * x)
 michel[x > 1] = 0
-michel /= np.trapezoid(michel, centres)
+# Normalize the analytic Michel curve over the x grid.
+integral = np.trapezoid(michel, x)
+if integral == 0 or not np.isfinite(integral):
+    michel = np.zeros_like(michel)
+else:
+    michel /= integral
 
 plt.plot(centres, michel, label="Michel spectrum", linestyle="--")
 

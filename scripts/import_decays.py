@@ -63,4 +63,4 @@ print(
     f"✅ Done! Inserted {inserted} new rows. Skipped {skipped} (duplicates or invalid)."
 )
 print("📦 Database: Postgres (get_conn())")
-print(f"📊 Table: decays")
+print("📊 Table: decays")

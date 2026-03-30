@@ -38,7 +38,12 @@ def main():
     # Overlay Michel spectrum (normalized)
     x_grid = np.linspace(0, 1, 200)
     y = michel_pdf(x_grid)
-    y /= np.trapz(y, x_grid)
+    # normalize using trapezoidal rule (np.trapz is deprecated)
+    integral = np.trapezoid(y, x_grid)
+    if integral == 0 or not np.isfinite(integral):
+        y = np.zeros_like(y)
+    else:
+        y /= integral
     plt.plot(x_grid, y, "r--", label="Michel spectrum")
 
     plt.xlabel(r"$x = 2E_e/m_\mu$")

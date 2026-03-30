@@ -33,7 +33,7 @@ def main():
         afb=-0.1,  # ← Change this to 0.0, +0.1, -0.1 per test
     )
 
-    print(f"\n[GENERATION SUMMARY]")
+    print("\n[GENERATION SUMMARY]")
     print(f"  Events accepted:   {result['success']}")
     print(f"  Events rejected:   {result['rejected']}")
     print(f"  Events failed:     {result['failed']}")

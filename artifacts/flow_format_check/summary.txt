@@ -1,8 +1,0 @@
-Parent: Muon
-Events requested: 20
-Run timestamp: 2026-03-30T06:05:48.651682
-Success: 20
-Failed: 0
-Rejected: 0
-Diagram DOT: artifacts/flow_format_check/feynman.dot
-Diagram Rendered: artifacts/flow_format_check/feynman.png

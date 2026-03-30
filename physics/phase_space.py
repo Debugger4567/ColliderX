@@ -434,7 +434,7 @@ def validate_four_momentum_conservation(
     )
 
     if dE > tolerance or dp > tolerance:
-        print(f"⚠️  4-momentum NOT conserved:")
+        print("⚠️  4-momentum NOT conserved:")
         print(f"   ΔE = {dE:.6f} MeV (tolerance: {tolerance})")
         print(f"   Δp = {dp:.6f} MeV (tolerance: {tolerance})")
         return False

@@ -19,7 +19,7 @@ def get_table_schema(table_name: str):
 
     # 1. Get column definitions
     cur.execute(f"""
-        SELECT 
+        SELECT
             column_name,
             data_type,
             character_maximum_length,
@@ -67,7 +67,7 @@ def get_table_schema(table_name: str):
 
     indexes = cur.fetchall()
     if indexes:
-        print(f"\nINDEXES:")
+        print("\nINDEXES:")
         print("-" * 60)
         for idx_name, idx_def in indexes:
             print(f"  {idx_name}")
@@ -85,7 +85,7 @@ def get_table_schema(table_name: str):
 
     constraints = cur.fetchall()
     if constraints:
-        print(f"\nCONSTRAINTS:")
+        print("\nCONSTRAINTS:")
         print("-" * 60)
         for name, ctype in constraints:
             print(f"  {name:30} ({ctype})")
@@ -118,7 +118,7 @@ def get_table_schema(table_name: str):
 
     fkeys = cur.fetchall()
     if fkeys:
-        print(f"\nFOREIGN KEYS:")
+        print("\nFOREIGN KEYS:")
         print("-" * 60)
         for col, ftable, fcol in fkeys:
             print(f"  {col} → {ftable}({fcol})")
@@ -175,17 +175,17 @@ def generate_create_statements():
     for table in tables:
         # Get table definition using pg_dump style query
         cur.execute(f"""
-            SELECT 
+            SELECT
                 'CREATE TABLE ' || '{table}' || ' (' ||
                 string_agg(
-                    column_name || ' ' || 
-                    data_type || 
-                    CASE WHEN character_maximum_length IS NOT NULL 
-                        THEN '(' || character_maximum_length || ')' 
+                    column_name || ' ' ||
+                    data_type ||
+                    CASE WHEN character_maximum_length IS NOT NULL
+                        THEN '(' || character_maximum_length || ')'
                         ELSE '' END ||
                     CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END ||
-                    CASE WHEN column_default IS NOT NULL 
-                        THEN ' DEFAULT ' || column_default 
+                    CASE WHEN column_default IS NOT NULL
+                        THEN ' DEFAULT ' || column_default
                         ELSE '' END,
                     ', '
                 ) || ');'

@@ -1,4 +1,3 @@
-import os
 import math
 import numpy as np
 from .helicity import (
@@ -14,7 +13,6 @@ def _unit(v: np.ndarray) -> np.ndarray:
 
 
 from datetime import datetime
-from pathlib import Path
 
 from physics.spin import SpinState
 from .particles import Particle
@@ -936,9 +934,7 @@ def simulate_chain(
     if parent_pdg is None:
         raise RuntimeError(f"Unknown particle: {parent_name}")
 
-    if fixed_decay_mode:
-        _modes = [(fixed_decay_mode, 1.0)]
-    else:
+    if not fixed_decay_mode:
         modes = get_decay_modes(parent_pdg)
         if len(modes) == 1:
             fixed_decay_mode = modes[0][0]

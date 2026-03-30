@@ -20,7 +20,7 @@ def load_pi0_events():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT 
+        SELECT
             e.id,
             fs.particle,
             fs.px,

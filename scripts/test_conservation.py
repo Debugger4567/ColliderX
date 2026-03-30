@@ -22,7 +22,6 @@ from physics.conservation import (
     check_energy_momentum,
     two_body_decay,
 )
-from pathlib import Path
 from db import get_conn
 
 
@@ -124,7 +123,7 @@ def test_two_body_decay_formula_match():
     parent = FourVector(1000.0, 0, 0, 0)
     m1, m2 = 200.0, 300.0
     d1, d2 = two_body_decay(parent, m1, m2)
-    M = parent.mass()
+    M = parent.invariant_mass
     p_expected = math.sqrt(
         max((M**2 - (m1 + m2) ** 2) * (M**2 - (m1 - m2) ** 2), 0.0)
     ) / (2 * M)
@@ -150,8 +149,8 @@ def test_boost_consistency_direct_vs_manual():
     # Boost components
     bx, by, bz = 0.0, 0.0, 0.6
     parent_boosted = parent_rest.boost(bx, by, bz)
-    d1_b = d1_rf.boost(bx, by, bz)
-    d2_b = d2_rf.boost(bx, by, bz)
+    d1_rf.boost(bx, by, bz)
+    d2_rf.boost(bx, by, bz)
     # Direct generation from boosted parent
     d1_direct, d2_direct = two_body_decay(parent_boosted, m1, m2)
     # Energies sum to parent energy & conservation holds
@@ -269,8 +268,8 @@ def test_particle_db_mass_lookup_and_decay_conservation():
     # Allow a relative tolerance of 5e-6 or absolute 5e-6 to accommodate DB rounding
     rel_tol = 5e-6
     abs_tol = 5e-6
-    _assert_close(dv1.mass(), d1[1], tol=max(abs_tol, d1[1] * rel_tol))
-    _assert_close(dv2.mass(), d2[1], tol=max(abs_tol, d2[1] * rel_tol))
+    _assert_close(dv1.invariant_mass, d1[1], tol=max(abs_tol, d1[1] * rel_tol))
+    _assert_close(dv2.invariant_mass, d2[1], tol=max(abs_tol, d2[1] * rel_tol))
 
 
 @pytest.mark.skipif(

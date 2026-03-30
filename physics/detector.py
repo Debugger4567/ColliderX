@@ -30,8 +30,6 @@ def apply_detector(final_states: list[dict]) -> dict:
         else:
             visible.append(fs)
 
-    met_mag = (met_px**2 + met_py**2) ** 0.5
-
     return {
         "visible": visible,
         "met_px": met_px,
