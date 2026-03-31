@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "colliderx"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first particle decay simulator"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,8 @@ dependencies = [
   "pandas",
   "matplotlib",
   "scipy",
+  "python-dotenv",
+  "psycopg2-binary",
 ]
 
 [project.urls]
