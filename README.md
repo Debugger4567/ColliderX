@@ -6,6 +6,14 @@ Run a short end-to-end flow: event simulation → Feynman diagram → summary pl
 
 ## Install
 
+From PyPI:
+
+```bash
+pip install colliderx
+```
+
+For local development:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
