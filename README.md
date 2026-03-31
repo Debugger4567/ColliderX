@@ -10,9 +10,40 @@ Run a short end-to-end flow: event simulation → Feynman diagram → summary pl
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-# (optional) install Graphviz if you want rendered diagrams
-# macOS: brew install graphviz
 ```
+
+Install Graphviz (optional, only needed for rendered `feynman.png`):
+
+macOS:
+
+```bash
+brew install graphviz
+```
+
+Linux (Debian/Ubuntu):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y graphviz
+```
+
+Windows (PowerShell):
+
+```powershell
+# Option 1: winget
+winget install Graphviz.Graphviz
+
+# Option 2: Chocolatey
+choco install graphviz
+```
+
+Verify Graphviz is available:
+
+```bash
+dot -V
+```
+
+Note: `pip install colliderx` cannot reliably auto-install system Graphviz (`dot`) across all OS/package managers. ColliderX will still run without it and fall back to DOT-only output (`feynman.dot`).
 
 ## Quick Run
 
