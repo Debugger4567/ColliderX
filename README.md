@@ -55,6 +55,21 @@ Note: `pip install colliderx` cannot reliably auto-install system Graphviz (`dot
 
 ## Quick Run
 
+If installed from PyPI, run the installed CLI command from any folder:
+
+```bash
+colliderx -p "Muon" -n 1000 --save --no-show -o artifacts/flow_muon
+```
+
+If running from source, first `cd` into the repository root, then use `main.py`:
+
+```bash
+cd /path/to/ColliderX
+python main.py -p "Muon" -n 1000 --save --no-show -o artifacts/flow_muon
+```
+
+Other examples (from source):
+
 Default (interactive, show-only):
 
 ```bash
